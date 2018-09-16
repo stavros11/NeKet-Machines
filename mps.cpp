@@ -5,16 +5,7 @@
 #include <random>
 #include <iostream> // temporarily for tests
 #include "lookup.hpp"
-//#include "Utils/random_utils.hpp"
-
-void RandomGaussian(Eigen::Matrix<std::complex<double>, Eigen::Dynamic, 1> &par, double sigma) {
-  std::default_random_engine generator(1);
-  std::normal_distribution<double> distribution(0, sigma);
-  for (int i = 0; i < par.size(); i++) {
-    par(i) =
-        std::complex<double>(distribution(generator), distribution(generator));
-  }
-};
+#include "all_utils.hpp"
 
 /**
   Abstract class for Machines.
@@ -102,7 +93,7 @@ class MPS {
  void InitRandomPars(int seed, double sigma) {
     VectorType pars(npar_);
 
-    ::RandomGaussian(pars, sigma);
+    netket::RandomGaussian(par, seed, sigma);
     SetParameters(pars);
   };
 
@@ -336,6 +327,55 @@ class MPS {
       return der;
   };
 
+
+  // Json functions
+  void to_json(const json &j) {
+    j["Machine"]["Name"] = "MPS";
+    j["Machine"]["Nspins"] = N;
+    j["Machine"]["BondDim"] = D;
+    j["Machine"]["PhysDim"] = d;
+    j["Machine"]["W"] = W;
+  };
+
+  void from_json(const json &pars) override {
+    if (pars.at("Machine").at("Name") != "MPS") {
+      throw InvalidInputError(
+          "Error while constructing MPS from Json input");
+    }
+
+    if (FieldExists(pars["Machine"], "Nspins")) {
+      N = pars["Machine"]["Nspins"];
+    }
+    if (N != hilbert_.Size()) {
+      throw InvalidInputError(
+          "Number of visible units is incompatible with given "
+          "Hilbert space");
+    }
+
+    if (FieldExists(pars["Machine"], "BondDim")) {
+      D = pars["Machine"]["BondDim"];
+    }
+    else {
+        throw InvalidInputError(
+          "Unspecified bond dimension");
+    }
+
+    Init();
+
+    // Loading parameters, if defined in the input
+    if (FieldExists(pars["Machine"], "W")) {
+      W_ = pars["Machine"]["W"];
+    }
+  };
+   
+    // Still to do: 
+    // Read physical dimension and size from Hilbert.
+    // Do vectorization for spins more than 1/2.
+    // Update look up table.
+    // Don't forget the logarithms where needed.
+    // Upgrade look ups to be more efficient (tree calculation?).
+    // Look ups for LogDer? (currently did it with local look ups).
+    // Slight modifications (remove traces) for OBC.
 };
 
 int main() {
