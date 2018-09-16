@@ -202,27 +202,46 @@ class MPS {
       const std::vector<std::vector<double>> &newconf) {
     // This function has some mistakes! It assumes that newconf has the whole state
     // but probably it only has the changed positions
-
     const std::size_t nconn = tochange.size();
-    VectorType logvaldiffs = VectorType::Zero(nconn);
-    MatrixType current_prod = W[0 + (int)v(0)];
-    std::vector<MatrixType> new_prods;
+    int site = 0;
+    std::size_t nchange;
+    VectorType logvaldiffs(nconn);
+    MatrixType current_prod = W[(int)v(0)];
+    MatrixType new_prods(D, D);
 
     for (std::size_t k=0; k<nconn; k++) {
-        new_prods.push_back(W[0 + (int)newconf[k][0]]);
-    }
+        nchange = tochange[k].size();
 
-    for (int site=0; site<N-1; site++){
-        for (std::size_t k=0; k<nconn; k++){
-            new_prods[k] *= W[site + (int)newconf[k][site]];
+        if (tochange[k][0] == 0) {
+            new_prods = W[(int)newconf[k][0]];
+        }
+        else {
+            new_prods = W[(int)v(0)];
+            for (site=1; site<tochange[k][0]; site++) {
+                new_prods *= W[site + (int)v(site)];
+                current_prod *= W[site + (int)v(site)];
+            }
+            site = tochange[k][0];
+            new_prods *= W[site + (int)newconf[k][0]];
             current_prod *= W[site + (int)v(site)];
         }
-    }
 
-    current_prod *= W[N-1 + (int)v(N-1)];
-    for (std::size_t k=0; k<nconn; k++) {
-        new_prods[k] *= W[N-1 + (int)newconf[k][N-1]];
-        logvaldiffs(k) = new_prods[k].trace() / current_prod.trace(); // A log is needed here
+        for (std::size_t i=1; i<nchange; i++){
+            for (site=tochange[k][i-1]+1; site<tochange[k][i]; site++) {
+                new_prods *= W[site + (int)v(site)];
+                current_prod *= W[site + (int)v(site)];
+            }
+            site = tochange[k][i];
+            new_prods *= W[site + (int)newconf[k][i]];
+            current_prod *= W[site + (int)v(site)];
+        }
+
+        for (site=tochange[k][nchange-1]+1; site<N; site++) {
+            new_prods *= W[site + (int)v(site)];
+            current_prod *= W[site + (int)v(site)];
+        }
+
+        logvaldiffs(k) = new_prods.trace() / current_prod.trace(); // A log is needed here
     }
 
     return logvaldiffs;
@@ -279,7 +298,7 @@ class MPS {
   set of parameters.
   */
   VectorType DerLog(const Eigen::VectorXd &v) {
-    int k=0, Dsq=D*D;
+    int k = 0, Dsq = D*D;
     VectorType der(npar_);
 
     for (int spin=0; spin<d; spin++) {
@@ -324,29 +343,46 @@ int main() {
     double sigma=0.1;
     MPS<complex<double>> x;
     Lookup<complex<double>> ltable;
-    Eigen::VectorXd chain(x.Nvisible());
-
-    cout << x.Npar() << endl;
-    cout << x.Nvisible() << endl;
-    cout << endl;
+    Eigen::VectorXd chain(x.Nvisible()), chain2(x.Nvisible());
 
     x.Init();
     x.InitRandomPars(1, sigma);
-    cout << "Machine Initialized..." << endl;
+    cout << "Machine Initialized with " << x.Nvisible() << " units and " << x.Npar() << " parameters." << endl;
 
-    chain.setZero(x.Nvisible());
+    chain.setZero(x.Nvisible()); chain2.setZero(x.Nvisible());
     chain(0)=1; chain(4)=1; chain(5)=1;
-    cout << chain << endl;
+    chain2(0)=1; chain2(3)=1; chain2(5)=1;
+    cout << "Chains updated." << endl;
 
-    cout << ltable.MatrixSize() << endl;
     x.InitLookup(chain, ltable);
-    cout << "Look up table initialized..." << ltable.MatrixSize() << endl;
+    cout << "Look up table initialized with " << ltable.MatrixSize() << " matrices." << endl;
     
-    //cout << "Psi (full calculation) = " << x.LogVal(chain) << endl;
-    //cout << "Psi (look up) = " << x.LogVal(chain, ltable) << endl;
-    //cout << "Psi (look up right) =" << ltable.M(2*x.Nvisible()-1).trace() << endl;
+    // Test LogVals
+    complex<double> psi = x.LogVal(chain), psi2 = x.LogVal(chain2);
 
-    cout << "DerLog = " << x.DerLog(chain) << endl;
+    cout << endl;
+    cout << "Psi (full calculation) = " << psi << endl;
+    cout << "Psi (look up) = " << x.LogVal(chain, ltable) << endl;
+    cout << "Psi (look up right) =" << ltable.M(2*x.Nvisible()-1).trace() << endl;
+    cout << endl;
+
+    // Test DerLog
+    //cout << "DerLog = " << x.DerLog(chain) << endl;
+
+    // Test LogValDiff
+    vector<int> change_ind;
+    vector<double> upd_conf;
+    vector<vector<int>> change_ind_v;
+    vector<vector<double>> upd_conf_v;
+
+    change_ind.push_back(3); upd_conf.push_back(1);
+    change_ind.push_back(4); upd_conf.push_back(0);
+
+    change_ind_v.push_back(change_ind); upd_conf_v.push_back(upd_conf);
+
+    cout << "LogValDiff (full calculation) = " << x.LogValDiff(chain, change_ind_v, upd_conf_v) << endl;
+    cout << "LogValDiff (with look up) = " << x.LogValDiff(chain, change_ind, upd_conf, ltable) << endl;
+    cout << "Ratio from LogVal calculation = " << psi2 / psi << endl;
 
     return 0;
 }
