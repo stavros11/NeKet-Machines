@@ -26,6 +26,7 @@
 #include "rbm_spin.hpp"
 #include "rbm_spin_symm.hpp"
 #include "mps_periodic.hpp"
+#include "mps_open.hpp"
 
 namespace netket {
 
@@ -78,8 +79,10 @@ class Machine : public AbstractMachine<T> {
       m_ = Ptype(new RbmMultival<T>(hilbert, pars));
     } else if (pars["Machine"]["Name"] == "Jastrow") {
       m_ = Ptype(new Jastrow<T>(hilbert, pars));
-	} else if (pars["Machine"]["Name"] == "MPS") {
+	} else if (pars["Machine"]["Name"] == "MPSperiodic") {
 	  m_ = Ptype(new MPSPeriodic<T>(hilbert, pars));
+	} else if (pars["Machine"]["Name"] == "MPSopen") {
+	  m_ = Ptype(new MPSOpen<T>(hilbert, pars));
 	}
   }
 
@@ -128,7 +131,7 @@ class Machine : public AbstractMachine<T> {
     const std::string name = FieldVal(pars["Machine"], "Name", "Machine");
 
     std::set<std::string> machines = {"RbmSpin", "RbmSpinSymm", "RbmMultival",
-                                      "FFNN", "Jastrow", "JastrowSymm", "MPS"};
+                                      "FFNN", "Jastrow", "JastrowSymm", "MPSperiodic", "MPSopen"};
 
 
     if (machines.count(name) == 0) {
