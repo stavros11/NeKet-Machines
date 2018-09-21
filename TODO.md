@@ -10,4 +10,4 @@
 
 ### Additions
 - Canonical form option.
-- >1D systems (get data from graph object?)
+- 2D systems (get data from graph object?)
