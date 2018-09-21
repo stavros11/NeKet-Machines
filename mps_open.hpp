@@ -281,6 +281,17 @@ namespace netket {
 			return prods;
 		}; */
 
+		// Auxiliary function for sorting indeces 
+		// (copied from stackexchange - original answer by Lukasz Wiklendt)
+		inline std::vector<std::size_t> sort_indeces(const std::vector<int> &v) {
+			// initialize original index locations
+			std::vector<std::size_t> idx(v.size());
+			std::iota(idx.begin(), idx.end(), 0);
+			// sort indexes based on comparing values in v
+			std::sort(idx.begin(), idx.end(), [&v](std::size_t i1, std::size_t i2) {return v[i1] < v[i2];});
+			return idx;
+		};
+
 		void UpdateLookup(const Eigen::VectorXd &v,
 			const std::vector<int> &tochange,
 			const std::vector<double> &newconf,
@@ -291,57 +302,66 @@ namespace netket {
 			if (nchange <= 0) {
 				return;
 			}
+			std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
+			int site = tochange[sorted_ind[0]];
+
 			//InfoMessage() << "Lookup update called" << std::endl;
-
-			// Sort tochange in as
-
-			for (std::size_t k = 0; k < nchange; k++) {
-				InfoMessage() << tochange[k] << std::endl;
-			}
+			//for (std::size_t k = 0; k < nchange; k++) {
+			//	InfoMessage() << tochange[sorted_ind[k]] << std::endl;
+			//}
 
 			// Update left (site++)
-			if (tochange[0] == 0) {
-				lt.M(0) = W_[confindex_[newconf[0]]];
+			if (site == 0) {
+				lt.M(0) = W_[confindex_[newconf[sorted_ind[0]]]];
 				//loc_lt[0] = lt.M(0);
 			}
 			else {
-				lt.M(2 * tochange[0]) = lt.M(2 * (tochange[0] - 1)) * W_[d_ * tochange[0] + confindex_[newconf[0]]];
+				lt.M(2 * site) = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[newconf[sorted_ind[0]]]];
 				//loc_lt[2 * site] = lt.M(2 * site);
 			}
 			for (std::size_t k = 1; k < nchange; k++) {
-				for (int site = tochange[k - 1] + 1; site < tochange[k]; site++) {
+				for (site = tochange[sorted_ind[k - 1]] + 1; site < tochange[sorted_ind[k]]; site++) {
 					lt.M(2 * site) = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[v(site)]];
 					//loc_lt[2 * site] = lt.M(2 * site);
 				}
-				lt.M(2 * tochange[k]) = lt.M(2 * (tochange[k] - 1)) * W_[d_ * tochange[k] + confindex_[newconf[k]]];
+				site = tochange[sorted_ind[k]];
+				lt.M(2 * site) = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[newconf[sorted_ind[k]]]];
 				//loc_lt[2 * site] = lt.M(2 * site);
 			}
-			for (int site = tochange[nchange - 1] + 1; site < N_; site++) {
+			for (int site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
 				lt.M(2 * site) = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[v(site)]];
 				//loc_lt[2 * site] = lt.M(2 * site);
 			}
 
+			
+			//InfoMessage() << "Lookup update left completed" << std::endl;
+
 			// Update right (site--)
-			InfoMessage() << "Lookup update left completed" << std::endl;
-			if (tochange[nchange - 1] == N_ - 1) {
-				lt.M(1) = W_[d_ * (N_ - 1) + confindex_[newconf[nchange - 1]]];
+			site = tochange[sorted_ind[nchange - 1]];
+			if (site == N_ - 1) {
+				lt.M(1) = W_[d_ * (N_ - 1) + confindex_[newconf[sorted_ind[nchange - 1]]]];
 			}
 			else {
-				lt.M(2 * (N_ - tochange[nchange - 1]) - 1) = W_[d_ * tochange[nchange - 1] + confindex_[newconf[nchange - 1]]] * lt.M(2 * (N_ - tochange[nchange - 1]) - 3);
+				lt.M(2 * (N_ - site) - 1) = W_[d_ * site + confindex_[newconf[sorted_ind[nchange - 1]]]] * lt.M(2 * (N_ - site) - 3);
 			}
+
 			//InfoMessage() << "First right assigned" << std::endl;
+
 			for (int k = nchange - 2; k >= 0; k--) {
-				for (int site = tochange[k + 1] - 1; site > tochange[k]; site--) {
+				for (site = tochange[sorted_ind[k + 1]] - 1; site > tochange[sorted_ind[k]]; site--) {
 					lt.M(2 * (N_ - site) - 1) = W_[d_ * site + confindex_[v(site)]] * lt.M(2 * (N_ - site) - 3);
 				}
-				//InfoMessage() << k << " " << tochange[k] << std::endl;
-				lt.M(2 * (N_ - tochange[k]) - 1) = W_[d_ * tochange[k] + confindex_[newconf[k]]] * lt.M(2 * (N_ - tochange[k]) - 3);
+				site = tochange[sorted_ind[k]];
+				lt.M(2 * (N_ - site) - 1) = W_[d_ * site + confindex_[newconf[sorted_ind[k]]]] * lt.M(2 * (N_ - site) - 3);
 			}
+
 			//InfoMessage() << "Middle loops done" << std::endl;
-			for (int site = tochange[0] - 1; site >= 0; site--) {
+
+			for (site = tochange[sorted_ind[0]] - 1; site >= 0; site--) {
 				lt.M(2 * (N_ - site) - 1) = W_[d_ * site + confindex_[v(site)]] * lt.M(2 * (N_ - site) - 3);
 			}
-			InfoMessage() << "Lookup update ended" << std::endl;
+
+			//InfoMessage() << "Lookup update ended" << std::endl;
 		};
 
 		T LogVal(const Eigen::VectorXd &v) override {
@@ -364,33 +384,43 @@ namespace netket {
 			int site = 0;
 			//ComputeVtilde(v, vtilde_);
 			std::size_t nchange;
+			std::vector<std::size_t> sorted_ind;
 			VectorType logvaldiffs=VectorType::Zero(nconn);
 			StateType current_psi = mps_contractionLeft(v, N_).trace();
 			MatrixType new_prods(1, D_);
-			InfoMessage() << "LogValDiff full called" << std::endl;
-			// current_prod calculation only needs to be done once. Fix that
+
+			//InfoMessage() << "LogValDiff full called" << std::endl;
+
 			for (std::size_t k = 0; k < nconn; k++) {
 				nchange = tochange[k].size();
+
 				//InfoMessage() << "k = " << k << " nchange = " << nchange << std::endl;
+
 				if (nchange > 0) {
-					if (tochange[k][0] == 0) {
-						new_prods = W_[confindex_[newconf[k][0]]];
+					sorted_ind = sort_indeces(tochange[k]);
+					site = tochange[k][sorted_ind[0]];
+					if (site == 0) {
+						new_prods = W_[confindex_[newconf[k][sorted_ind[0]]]];
 					}
 					else {
-						new_prods = mps_contractionLeft(v, tochange[k][0]) * W_[d_ * tochange[k][0] + confindex_[newconf[k][0]]];
+						new_prods = mps_contractionLeft(v, site) * W_[d_ * site + confindex_[newconf[k][sorted_ind[0]]]];
 					}
 					for (std::size_t i = 1; i < nchange; i++) {
-						new_prods *= mps_contraction(v, tochange[k][i - 1] + 1, tochange[k][i]) * W_[d_ * tochange[k][i] + confindex_[newconf[k][i]]];
+						site = tochange[k][sorted_ind[i]];
+						new_prods *= mps_contraction(v, tochange[k][sorted_ind[i - 1]] + 1, site) * W_[d_ * site + confindex_[newconf[k][sorted_ind[i]]]];
 					}
-					if (tochange[k][nchange - 1] < N_ - 1) {
-						logvaldiffs(k) = std::log((new_prods * mps_contractionRight(v, tochange[k][nchange - 1] + 1)).trace() / current_psi);
+					site = tochange[k][sorted_ind[nchange - 1]];
+					if (site < N_ - 1) {
+						logvaldiffs(k) = std::log((new_prods * mps_contractionRight(v, site + 1)).trace() / current_psi);
 					}
 					else {
 						logvaldiffs(k) = std::log(new_prods.trace() / current_psi);
 					}
 				}
 			}
-			InfoMessage() << "LogValDiff full ended" << std::endl;
+
+			//InfoMessage() << "LogValDiff full ended" << std::endl;
+
 			return logvaldiffs;
 		};
 
@@ -461,6 +491,8 @@ namespace netket {
 			if (nflip <= 0) {
 				return T(0, 0);
 			}
+			const std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
+			int site = toflip[sorted_ind[0]];
 			MatrixType new_prod;
 			
 			//InfoMessage() << "LogValDiff lookup called" << std::endl;
@@ -468,23 +500,26 @@ namespace netket {
 			//	InfoMessage() << toflip[k] << std::endl;
 			//}
 
-			if (toflip[0] == 0) {
-				new_prod = W_[confindex_[newconf[0]]];
+			if (site == 0) {
+				new_prod = W_[confindex_[newconf[sorted_ind[0]]]];
 			}
 			else {
-				new_prod = lt.M(2 * (toflip[0] - 1)) * W_[d_ * toflip[0] + confindex_[newconf[0]]];
+				new_prod = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[newconf[sorted_ind[0]]]];
 			}
 
 			for (std::size_t k = 1; k < nflip; k++) {
-				new_prod *= mps_contraction(v, toflip[k - 1] + 1, toflip[k]) * W_[d_ * toflip[k] + confindex_[newconf[k]]];
+				site = toflip[sorted_ind[k]];
+				new_prod *= mps_contraction(v, toflip[sorted_ind[k - 1]] + 1, site) * W_[d_ * site + confindex_[newconf[sorted_ind[k]]]];
 			}
 
 			//InfoMessage() << "LogValDiff lookup ended" << std::endl;
-			if (toflip[nflip - 1] == N_ - 1) {
+
+			site = toflip[sorted_ind[nflip - 1]];
+			if (site == N_ - 1) {
 				return std::log(new_prod.trace() / lt.M(2 * N_ - 2).trace()); // A log is needed here
 			}
 			else {
-				return std::log((new_prod * lt.M(2 * (N_ - toflip[nflip - 1]) - 3)).trace()/ lt.M(2 * N_ - 2).trace()); // A log is needed here
+				return std::log((new_prod * lt.M(2 * (N_ - site) - 3)).trace()/ lt.M(2 * N_ - 2).trace()); // A log is needed here
 			}
 		};
 
@@ -498,23 +533,28 @@ namespace netket {
 			VectorType der = VectorType::Zero(npar_);
 
 			//InfoMessage() << "Derivative called" << std::endl;
+
 			// Calculate products
 			left_prods.push_back(W_[confindex_[v(0)]]);
 			right_prods.push_back(W_[d_ * (N_ - 1) + confindex_[v(N_ - 1)]]);
 			for (int site = 1; site < N_- 1; site++) {
+
 				//InfoMessage() << "Right shape = " << right_prods[site-1] << std::endl;
 				//InfoMessage() << "Left shape = " << left_prods[site - 1] << std::endl;
+
 				left_prods.push_back(left_prods[site - 1] * W_[d_ * site + confindex_[v(site)]]);
 				right_prods.push_back(W_[d_ * (N_ - 1 - site) + confindex_[v(N_ - 1 - site)]] * right_prods[site-1]);
 			}
 			left_prods.push_back(left_prods[N_ -2] * W_[d_ * (N_-1) + confindex_[v(N_-1)]]);
 			right_prods.push_back(W_[confindex_[v(0)]] * right_prods[N_ - 2]);
+
 			//InfoMessage() << "Products calculated" << std::endl;
 
 			der.segment(confindex_[v(0)] * D_, D_) = Eigen::Map<VectorType>((right_prods[N_ - 2]).data(), D_);
 			//InfoMessage() << "Left derivative assigned" << std::endl;
 			for (int site = 1; site < N_ - 1; site++) {
 				der.segment(d_ * D_ + ((site-1) * d_ + confindex_[v(site)])* Dsq, Dsq) = middle_tensor_product(left_prods[site - 1], right_prods[N_ - site - 2]);
+
 				//InfoMessage() << "site = " << site << std::endl;
 			}
 			der.segment(d_ * D_ + (N_ - 2) * d_ * Dsq + confindex_[v(N_ - 1)]* D_, D_) = Eigen::Map<VectorType>((left_prods[N_ - 2]).data(), D_);
