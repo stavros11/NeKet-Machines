@@ -5,7 +5,7 @@
 - Open MPS in BoseHubbard1D works but probably converges to wrong energy (larger bond dimension needed?)
 
 ### Minor changes to do
-- Add double to int map and index sorting in Periodic MPS similarly to the Open to make it work too.
+- (**DONE**) Add double to int map and index sorting in Periodic MPS similarly to the Open to make it work too.
 - Use inheritance to define Open MPS from the Periodic one in order to delete similar functions in the code.
 
 ### Additions
