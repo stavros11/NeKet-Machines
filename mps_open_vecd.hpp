@@ -76,13 +76,13 @@ namespace netket {
 
 			npar_ = 0;
 			for (int i = 0; i < N_; i++) {
-				npar += D_[i] * D_[i + 1];
+				npar_ += D_[i] * D_[i + 1];
 			}
 			npar_ *= d_;
 
 			// Machine creation messages
 			InfoMessage() << "Open MPS machine with " << N_ << " sites created" << std::endl;
-			InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << D_ << std::endl;
+			InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << Duser_ << std::endl;
 			InfoMessage() << "The number of variational parameters is " << npar_ << std::endl;
 			if (canonicalform_) {
 				InfoMessage() << "MPS is used in canonical form" << std::endl;
@@ -135,6 +135,62 @@ namespace netket {
 
 			// Add normalization function here
 		};
+
+		// #################################### //
+		// ### Functions for canonical form ### //
+		// #################################### //
+		void normalize2canonical() {
+			MatrixType SdotV;
+			// Do SVD for site 0
+			JacobiSVD<MatrixType> svd(list2matLeft(0), ComputeThinU | ComputeThinV);
+			// Update W for site 0
+			mat2list(0, svd.matrixU());
+
+			// Repeat for the rest sites
+			for (int site=1; site<N_-1; site++) {
+				SdotV = svd.singularValues().asDiagonal() * svd.matrixV().adjoint();
+				JacobiSVD<MatrixType> svd(list2mat(site, SdotV), ComputeThinU | ComputeThinV);
+				mat2list(site, svd.matrixU());
+			}
+
+			// Repeat for final state but now save V
+			SdotV = svd.singularValues().asDiagonal() * svd.matrixV().adjoint();
+			JacobiSVD<MatrixType> svd(list2mat(N_ - 1, SdotV), ComputeThinU | ComputeThinV);
+			mat2listRight(svd.matrixV().adjoint());
+		};
+
+		inline MatrixType list2matLeft(const int site) {
+			MatrixType mat(d_ * D_[site], D_[site+1]);
+			for (int i=0; i<d_; i++) {
+				mat.block<D_[site], D_[site+1]>(i * D_[site], 0) = W_[site * d_ + i];
+			}
+			return mat;
+		}
+
+		inline MatrixType list2mat(const int site, const MatrixType SdotV) {
+			MatrixType mat(d_ * D_[site], D_[site+1]);
+			for (int i=0; i<d_; i++) {
+				mat.block<D_[site], D_[site+1]>(i * D_[site], 0) = SdotV * W_[site * d_ + i];
+			}
+			return mat;
+		}
+
+		inline void mat2list(const int site, const MatrixType mat) {
+			for (int i=0; i<d_; i++) {
+				W_[site * d_ + i] = mat.block<D_[site], D_[site+1]>(i * D_[site], 0);
+			}
+		}
+
+		inline void mat2listRight(const MatrixType mat) {
+			int n = (N_ - 1) * d_;
+			double sqd = std::sqrt((double)d_);
+			for (int i=0; i<d_; i++) {
+				W_[n + i] = mat.block<D_[N_ - 1], D_[N_]>(i * D_[N_ - 1], 0) / sqd;
+			}
+		}
+		// ############################################ //
+		// ### End of functions for canonical form ### //
+		// ########################################## //
 
 		// Auxiliary function used for setting initial random parameters and adding identities in every matrix
 		inline void SetParametersIdentity(const VectorType &pars) {
@@ -404,7 +460,7 @@ namespace netket {
 		//Auxiliary function that calculates contractions from site1 to site2
 		inline MatrixType mps_contraction(const Eigen::VectorXd &v,
 			const int &site1, const int &site2) {
-			MatrixType c = MatrixType::Identity(D_, D_);
+			MatrixType c = MatrixType::Identity(D_[site1], D_[site1]);
 			for (int site = site1; site < site2; site++) {
 				c *= W_[d_ * site + confindex_[v(site)]];
 			}
@@ -504,8 +560,8 @@ namespace netket {
 
 		// Derivative with full calculation
 		VectorType DerLog(const Eigen::VectorXd &v) override {
-			const int Dsq = D_ * D_;
 			//ComputeVtilde(v, vtilde_);
+			int Dsq;
 			std::vector<MatrixType> left_prods, right_prods;
 			VectorType der = VectorType::Zero(npar_);
 
@@ -527,14 +583,15 @@ namespace netket {
 
 			//InfoMessage() << "Products calculated" << std::endl;
 
-			der.segment(confindex_[v(0)] * Db_, Db_) = Eigen::Map<VectorType>((right_prods[N_ - 2]).data(), Db_);
+			der.segment(confindex_[v(0)] * D_[1], D_[1]) = Eigen::Map<VectorType>((right_prods[N_ - 2]).data(), D_[1]);
 			//InfoMessage() << "Left derivative assigned" << std::endl;
 			for (int site = 1; site < N_ - 1; site++) {
-				der.segment(d_ * Db_ + ((site-1) * d_ + confindex_[v(site)])* Dsq, Dsq) = middle_tensor_product(left_prods[site - 1], right_prods[N_ - site - 2]);
+				Dsq = D_[site] * D_[site + 1];
+				der.segment(d_ * D_[1] + ((site-1) * d_ + confindex_[v(site)]) * Dsq, Dsq) = middle_tensor_product(left_prods[site - 1], right_prods[N_ - site - 2]);
 
 				//InfoMessage() << "site = " << site << std::endl;
 			}
-			der.segment(d_ * Db_ + (N_ - 2) * d_ * Dsq + confindex_[v(N_ - 1)]* Db_, Db_) = Eigen::Map<VectorType>((left_prods[N_ - 2]).data(), Db_);
+			der.segment(npar_ + (confindex_[v(N_ - 1)] - d_) * D_[N_ - 1], D_[N_ - 1]) = Eigen::Map<VectorType>((left_prods[N_ - 2]).data(), D_[N_ - 1]);
 
 			//InfoMessage() << "Derivative ended" << std::endl;
 			//der = der / left_prods[N_ - 1].trace();
@@ -543,10 +600,11 @@ namespace netket {
 		};
 
 		inline VectorType middle_tensor_product(const MatrixType left, const MatrixType right) {
-			VectorType der_seg = VectorType::Zero(D_ * D_);
+			int Dl = left.size(), Dr = right.size();
+			VectorType der_seg = VectorType::Zero(Dl * Dr);
 			int k = 0;
-			for (int i = 0; i < D_; i++) {
-				for (int j = 0; j < D_; j++) {
+			for (int i = 0; i < Dl; i++) {
+				for (int j = 0; j < Dr; j++) {
 					der_seg(k) = left(0, i) * right(j, 0);
 					k++;
 				}
