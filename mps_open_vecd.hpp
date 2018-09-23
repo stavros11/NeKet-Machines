@@ -85,7 +85,7 @@ namespace netket {
 			InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << Duser_ << std::endl;
 			InfoMessage() << "The number of variational parameters is " << npar_ << std::endl;
 			if (canonicalform_) {
-				InfoMessage() << "MPS is used in canonical form" << std::endl;
+				InfoMessage() << "MPS used in canonical form" << std::endl;
 			}
 
 			// Initialize map from Hilbert space states to MPS indices
@@ -132,8 +132,10 @@ namespace netket {
 					}
 				}
 			}
-
-			// Add normalization function here
+			// Normalize to canonical form
+			if (canonicalform_) {
+				normalize2canonical();
+			}
 		};
 
 		// #################################### //
@@ -141,28 +143,36 @@ namespace netket {
 		// #################################### //
 		void normalize2canonical() {
 			MatrixType SdotV;
+            Eigen::JacobiSVD<MatrixType> svd;
+
 			// Do SVD for site 0
-			JacobiSVD<MatrixType> svd(list2matLeft(0), ComputeThinU | ComputeThinV);
+            svd = JSVD(list2matLeft());
 			// Update W for site 0
 			mat2list(0, svd.matrixU());
-
+            
 			// Repeat for the rest sites
 			for (int site=1; site<N_-1; site++) {
 				SdotV = svd.singularValues().asDiagonal() * svd.matrixV().adjoint();
-				JacobiSVD<MatrixType> svd(list2mat(site, SdotV), ComputeThinU | ComputeThinV);
+				svd = JSVD(list2mat(site, SdotV));
 				mat2list(site, svd.matrixU());
 			}
 
 			// Repeat for final state but now save V
 			SdotV = svd.singularValues().asDiagonal() * svd.matrixV().adjoint();
-			JacobiSVD<MatrixType> svd(list2mat(N_ - 1, SdotV), ComputeThinU | ComputeThinV);
-			mat2listRight(svd.matrixV().adjoint());
+			svd = JSVD(list2matRight(SdotV));
+			mat2listRight(svd.matrixU());
 		};
 
-		inline MatrixType list2matLeft(const int site) {
-			MatrixType mat(d_ * D_[site], D_[site+1]);
+        inline Eigen::JacobiSVD<MatrixType> JSVD(const MatrixType x) {
+            using namespace Eigen;
+            JacobiSVD<MatrixType> svd(x, ComputeThinU | ComputeThinV);
+            return svd;
+        };
+
+		inline MatrixType list2matLeft() {
+			MatrixType mat(d_ * D_[0], D_[1]);
 			for (int i=0; i<d_; i++) {
-				mat.block<D_[site], D_[site+1]>(i * D_[site], 0) = W_[site * d_ + i];
+				mat.block(i * D_[0], 0, D_[0], D_[1]) = W_[i];
 			}
 			return mat;
 		}
@@ -170,14 +180,23 @@ namespace netket {
 		inline MatrixType list2mat(const int site, const MatrixType SdotV) {
 			MatrixType mat(d_ * D_[site], D_[site+1]);
 			for (int i=0; i<d_; i++) {
-				mat.block<D_[site], D_[site+1]>(i * D_[site], 0) = SdotV * W_[site * d_ + i];
+				mat.block(i * D_[site], 0, D_[site], D_[site+1]) = SdotV * W_[site * d_ + i];
+			}
+			return mat;
+		}
+
+        inline MatrixType list2matRight(const MatrixType SdotV) {
+            int n = (N_ - 1) * d_;
+			MatrixType mat(D_[N_ - 1], d_ * D_[N_]);
+			for (int i=0; i<d_; i++) {
+				mat.block(0, i * D_[N_], D_[N_ - 1], D_[N_]) = SdotV * W_[n + i];
 			}
 			return mat;
 		}
 
 		inline void mat2list(const int site, const MatrixType mat) {
 			for (int i=0; i<d_; i++) {
-				W_[site * d_ + i] = mat.block<D_[site], D_[site+1]>(i * D_[site], 0);
+				W_[site * d_ + i] = mat.block(i * D_[site], 0, D_[site], D_[site+1]);
 			}
 		}
 
@@ -185,7 +204,7 @@ namespace netket {
 			int n = (N_ - 1) * d_;
 			double sqd = std::sqrt((double)d_);
 			for (int i=0; i<d_; i++) {
-				W_[n + i] = mat.block<D_[N_ - 1], D_[N_]>(i * D_[N_ - 1], 0) / sqd;
+				W_[n + i] = mat.block(0, i * D_[N_], D_[N_ - 1], D_[N_]) / sqd;
 			}
 		}
 		// ############################################ //
@@ -224,7 +243,6 @@ namespace netket {
 			else {
 				SetParametersIdentity(pars);
 			}
-			
 		};
 
 		int Nvisible() const override { return N_; };
