@@ -144,6 +144,7 @@ namespace netket {
 		void normalize2canonical() {
 			MatrixType SdotV;
             Eigen::JacobiSVD<MatrixType> svd;
+			double last_norm=0.0;
 
 			// Do SVD for site 0
             svd = JSVD(list2matLeft());
@@ -156,11 +157,16 @@ namespace netket {
 				svd = JSVD(list2mat(site, SdotV));
 				mat2list(site, svd.matrixU());
 			}
-
-			// Repeat for final state but now save V
+			
+			// Normalize final state
 			SdotV = svd.singularValues().asDiagonal() * svd.matrixV().adjoint();
-			svd = JSVD(list2matRight(SdotV));
-			mat2listRight(svd.matrixU());
+			for (int i=d_*(N_ -1); i<d_*N_; i++) {
+				W_[i] = SdotV * W_[i];
+				last_norm += std::real((W_[i].conjugate().cwiseProduct(W_[i]).sum()));
+			}
+			for (int i=d_*(N_ -1); i<d_*N_; i++) {
+				W_[i] *= 1.0 / std::sqrt(last_norm);
+			}
 		};
 
         inline Eigen::JacobiSVD<MatrixType> JSVD(const MatrixType x) {
@@ -175,7 +181,7 @@ namespace netket {
 				mat.block(i * D_[0], 0, D_[0], D_[1]) = W_[i];
 			}
 			return mat;
-		}
+		};
 
 		inline MatrixType list2mat(const int site, const MatrixType SdotV) {
 			MatrixType mat(d_ * D_[site], D_[site+1]);
@@ -183,30 +189,13 @@ namespace netket {
 				mat.block(i * D_[site], 0, D_[site], D_[site+1]) = SdotV * W_[site * d_ + i];
 			}
 			return mat;
-		}
-
-        inline MatrixType list2matRight(const MatrixType SdotV) {
-            int n = (N_ - 1) * d_;
-			MatrixType mat(D_[N_ - 1], d_ * D_[N_]);
-			for (int i=0; i<d_; i++) {
-				mat.block(0, i * D_[N_], D_[N_ - 1], D_[N_]) = SdotV * W_[n + i];
-			}
-			return mat;
-		}
+		};
 
 		inline void mat2list(const int site, const MatrixType mat) {
 			for (int i=0; i<d_; i++) {
 				W_[site * d_ + i] = mat.block(i * D_[site], 0, D_[site], D_[site+1]);
 			}
-		}
-
-		inline void mat2listRight(const MatrixType mat) {
-			int n = (N_ - 1) * d_;
-			double sqd = std::sqrt((double)d_);
-			for (int i=0; i<d_; i++) {
-				W_[n + i] = mat.block(0, i * D_[N_], D_[N_ - 1], D_[N_]) / sqd;
-			}
-		}
+		};
 		// ############################################ //
 		// ### End of functions for canonical form ### //
 		// ########################################## //

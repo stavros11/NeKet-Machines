@@ -92,26 +92,32 @@ class MPS {
 		void normalize2canonical() {
 			MatrixType SdotV;
             Eigen::JacobiSVD<MatrixType> svd;
+			double last_norm=0.0;
 
 			// Do SVD for site 0
-            svd = SVD(list2matLeft());
+            svd = JSVD(list2matLeft());
 			// Update W for site 0
 			mat2list(0, svd.matrixU());
             
 			// Repeat for the rest sites
 			for (int site=1; site<N_-1; site++) {
 				SdotV = svd.singularValues().asDiagonal() * svd.matrixV().adjoint();
-				svd = SVD(list2mat(site, SdotV));
+				svd = JSVD(list2mat(site, SdotV));
 				mat2list(site, svd.matrixU());
 			}
-
-			// Repeat for final state but now save V
+			
+			// Normalize final state
 			SdotV = svd.singularValues().asDiagonal() * svd.matrixV().adjoint();
-			svd = SVD(list2matRight(SdotV));
-			mat2listRight(svd.matrixU());
+			for (int i=d_*(N_ -1); i<d_*N_; i++) {
+				W_[i] = SdotV * W_[i];
+				last_norm += std::real((W_[i].conjugate().cwiseProduct(W_[i]).sum()));
+			}
+			for (int i=d_*(N_ -1); i<d_*N_; i++) {
+				W_[i] *= 1.0 / std::sqrt(last_norm);
+			}
 		};
 
-        inline Eigen::JacobiSVD<MatrixType> SVD(const MatrixType x) {
+        inline Eigen::JacobiSVD<MatrixType> JSVD(const MatrixType x) {
             using namespace Eigen;
             JacobiSVD<MatrixType> svd(x, ComputeThinU | ComputeThinV);
             return svd;
@@ -133,26 +139,9 @@ class MPS {
 			return mat;
 		}
 
-        inline MatrixType list2matRight(const MatrixType SdotV) {
-            int n = (N_ - 1) * d_;
-			MatrixType mat(D_[N_ - 1], d_ * D_[N_]);
-			for (int i=0; i<d_; i++) {
-				mat.block(0, i * D_[N_], D_[N_ - 1], D_[N_]) = SdotV * W_[n + i];
-			}
-			return mat;
-		}
-
 		inline void mat2list(const int site, const MatrixType mat) {
 			for (int i=0; i<d_; i++) {
 				W_[site * d_ + i] = mat.block(i * D_[site], 0, D_[site], D_[site+1]);
-			}
-		}
-
-		inline void mat2listRight(const MatrixType mat) {
-			int n = (N_ - 1) * d_;
-			double sqd = std::sqrt((double)d_);
-			for (int i=0; i<d_; i++) {
-				W_[n + i] = mat.block(0, i * D_[N_], D_[N_ - 1], D_[N_]) / sqd;
 			}
 		}
 		// ############################################ //
