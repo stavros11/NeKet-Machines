@@ -121,6 +121,32 @@ namespace netket {
 			}
 		};
 
+		// ##### Functions for canonical form (not utilized yet) ##### //
+		// Auxiliary function that normalizes 
+		void NormalizeToCanonical() {
+			MatrixType Wresh(D_ * d_, D_);
+			
+			for (site = 0; site < N_ - 1; site++) {
+				vec2matblocks(Wresh, site);
+				JacobiSVD<MatrixType> svd(Wresh, ComputeThinU | ComputeThinV);
+				matblocks2vec(svd.matrixU(), site);
+				W_[d_ * (site + 1)] = svd.singularValues().asDiagonal() * svd.matrixV().adjoint() * W_[d_ * (site + 1)];
+			}
+		}
+
+		inline void vec2matblocks(MatrixType &Wresh, const int site) {
+			for (int i = 0; i < d_; i++) {
+				Wresh.block<D_, D_>(i, 0) = W_[d_ * site + i];
+			}
+		}
+
+		inline void matblocks2vec(const MatrixType Wresh, const int site) {
+			for (int i = 0; i < d_; i++) {
+				W_[d_ * site + i] = Wresh.block<D_, D_>(i, 0);
+			}
+		}
+		// ##### End of canonical form functions ##### //
+
 		// Auxiliary function used for setting initial random parameters and adding identities in every matrix
 		inline void SetParametersIdentity(const VectorType &pars) {
 			int k = 0;
