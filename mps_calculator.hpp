@@ -70,6 +70,57 @@ namespace netket {
 			return npar_;
 		};
 
+		VectorType GetParameters() override {
+			int k = 0;
+			VectorType pars(npar_);
+
+			for (int site = 0; p < symperiod_; site++) {
+				for (int spin = 0; spin < d_; spin++) {
+					for (int i = 0; i < D_; i++) {
+						for (int j = 0; j < D_; j++) {
+							pars(k) = W_[site][spin](i, j);
+							k++;
+						}
+					}
+				}
+			}
+			return pars;
+		};
+
+		void SetParameters(const VectorType &pars) override {
+			int k = 0;
+
+			for (int site = 0; p < symperiod_; site++) {
+				for (int spin = 0; spin < d_; spin++) {
+					for (int i = 0; i < D_; i++) {
+						for (int j = 0; j < D_; j++) {
+							W_[site][spin](i, j) = pars(k);
+							k++;
+						}
+					}
+				}
+			}
+		};
+
+		// Auxiliary function used for setting initial random parameters and adding identities in every matrix
+		inline void SetParametersIdentity(const VectorType &pars) {
+			int k = 0;
+
+			for (int site = 0; p < symperiod_; site++) {
+				for (int spin = 0; spin < d_; spin++) {
+					for (int i = 0; i < D_; i++) {
+						for (int j = 0; j < D_; j++) {
+							W_[site][spin](i, j) = pars(k);
+							if (i == j) {
+								W_[p](i, j) += T(1, 0);
+							}
+							k++;
+						}
+					}
+				}
+			}
+		};
+
 		T FullProduct(const std::vector<int> &v) {
 			MatrixType p = W_[0][v[0]];
 			for (int site = 0; site < N_; site++) {
