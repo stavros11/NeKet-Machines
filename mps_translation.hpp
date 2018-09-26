@@ -425,9 +425,9 @@ namespace netket {
 			der.segment(confindex_[v(0)] * Dsq, Dsq) += Eigen::Map<VectorType>((right_prods[N_ - 2]).transpose().data(), Dsq);
 			for (int site = 1; site < N_ - 1; site++) {
 				temp_product = right_prods[N_ - site - 2] * left_prods[site - 1];
-				der.segment((d_ * (site % symperiod_) + confindex_[v(site)])* Dsq, Dsq) = Eigen::Map<VectorType>((temp_product).transpose().data(), Dsq);
+				der.segment((d_ * (site % symperiod_) + confindex_[v(site)])* Dsq, Dsq) += Eigen::Map<VectorType>((temp_product).transpose().data(), Dsq);
 			}
-			der.segment((d_ * ((N_ - 1) % symperiod_) + confindex_[v(N_ - 1)])* Dsq, Dsq) = Eigen::Map<VectorType>((left_prods[N_ - 2]).transpose().data(), Dsq);
+			der.segment((d_ * ((N_ - 1) % symperiod_) + confindex_[v(N_ - 1)])* Dsq, Dsq) += Eigen::Map<VectorType>((left_prods[N_ - 2]).transpose().data(), Dsq);
 
 			//InfoMessage() << "Derivative ended" << std::endl;
 
@@ -438,7 +438,7 @@ namespace netket {
 		const Hilbert &GetHilbert() const { return hilbert_; };
 
 		void to_json(json &j) const override {
-		  j["Machine"]["Name"] = "MPSperiodic";
+		  j["Machine"]["Name"] = "MPStranslation";
 		  j["Machine"]["Nspins"] = N_;
 		  j["Machine"]["BondDim"] = D_;
 		  j["Machine"]["PhysDim"] = d_;
