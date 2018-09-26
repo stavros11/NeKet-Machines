@@ -52,9 +52,11 @@ namespace netket {
 		// Map from site numbering in v to numbering to each string
 		// for each site in v we get n 2-component vector: (string number, index within string), where n is the number of strings that the site is in
 		std::vector<std::vector<std::vector<int>>> site2string_;
+		// Map from strings to sites
+		std::vector<std::vector<int>> string2site_;
 
 		// Vector that stores the MPS object for each string
-		std::vector<MPSCalculator> strings_;
+		std::vector<MPSCalculator<T>> strings_;
 		
 		// Local lookup matrices
 		//std::vector<MatrixType> loc_lt;
@@ -75,7 +77,8 @@ namespace netket {
 
 		// Auxiliary function that defines the matrices
 		void Init() {
-			std::vector<int> two_component_vec;
+			std::vector<std::vector<int>> pushback_vec2;
+			std::vector<int> two_component_vec, pushback_vec;
 			two_component_vec.push_back(0);
 			two_component_vec.push_back(0);
 
@@ -91,19 +94,27 @@ namespace netket {
 			//    Note: currently we do not use symmetries in the MPS so symperiod = length of MPS
 			npar_ = 0;
 			for (int i = 0; i < M_; i++) {
-				strings_.push_back(MPSCalculator x(Lstr_[i], d_, Dstr_[i], Lstr_[i]));
+				strings_.push_back(MPSCalculator<T>::MPSCalculator(Lstr_[i], d_, Dstr_[i], Lstr_[i]));
 				npar_ += strings_[i].Npar();
 			}
 			// 3) Initialize site2string vector.
 			//    In the current default setting each site belongs to all strings
 			for (int site = 0; site < N_; site++) {
-				site2string_.push_back(std::vector<std::vector<int>> x);
+				site2string_.push_back(pushback_vec2);
 				for (int i = 0; i < M_; i++) {
 					site2string_[site].push_back(two_component_vec);
 					for (int j = 0; j < M_; j++) {
-						site2string_[site][i][0] = j
-						site2string_[site][i][1] = site
+						site2string_[site][i][0] = j;
+						site2string_[site][i][1] = site;
 					}
+				}
+			}
+			// 4) Initialize string2site vector
+			//    In the current default setting each site belongs to all strings
+			for (int i = 0; i < M_; i++) {
+				string2site_.push_back(pushback_vec);
+				for (int j = 0; j < Lstr_[i]; j++) {
+					string2site_[i].push_back(j);
 				}
 			}
 
@@ -197,18 +208,17 @@ namespace netket {
 		};
 
 		// Auxiliary function that takes v and returns the visible vector for the string
-		inline std::vector<int> extract(const Eigen::VectorXd &v, const int string)
-		{
-			std::vector<int> x
+		inline std::vector<int> extract(const Eigen::VectorXd &v, const int string) {
+			std::vector<int> x;
 			for (int i = 0; i < Lstr_[string]; i++)
 			{
-				x.push_back(confindex_[v(string2site[string][i])]);
+				x.push_back(confindex_[v(string2site_[string][i])]);
 			}
 			return x;
 		}
 
 		T LogVal(const Eigen::VectorXd &v) override {
-			StateType s = 0;
+			T s = T(0, 0);
 			for (int i = 0; i < M_; i++) { 
 				s += std::log(strings_[i].FullProduct(extract(v, i)));
 			}
@@ -223,17 +233,18 @@ namespace netket {
 		VectorType LogValDiff(
 			const Eigen::VectorXd &v, const std::vector<std::vector<int>> &tochange,
 			const std::vector<std::vector<double>> &newconf) override {
+
 			const std::size_t nconn = tochange.size();
 			int site = 0;
-
 			std::size_t nchange;
 			VectorType logvaldiffs = VectorType::Zero(nconn);
 
 			// Initialize string specific tochange and newconf vectors
-			std::vector<std::vector<std::vector<int>>> tochange_str.fill(M_), newconf_str.fill(M_);
+			std::vector<std::vector<std::vector<int>>> tochange_str(M_), newconf_str(M_);
+			std::vector<std::vector<int>> pushback_vec(nconn);
 			for (int i = 0; i < M_; i++) {
-				tochange_str[i].push_back(std::vector<std::vector<int>> x.fill(nconn));
-				newconf_str[i].push_back(std::vector<std::vector<int>> x.fill(nconn));
+				tochange_str[i] = pushback_vec;
+				newconf_str[i] = pushback_vec;
 			}
 
 			// Create tochange and newconf vectors for each string
@@ -243,16 +254,16 @@ namespace netket {
 					// Create string's tochange and newconf
 					for (std::size_t j = 0; j < nchange; j++) {
 						site = tochange[k][j];
-						for (int i = 0; i < site2string[site].size(); i++) {
-							tochange_str[site2string[site][i][0]][k].push_back(site2string[site][i][1]);
-							newconf_str[site2string[site][i][0]][k].push_back(confindex_[newconf[k][j]]);
+						for (int i = 0; i < site2string_[site].size(); i++) {
+							tochange_str[site2string_[site][i][0]][k].push_back(site2string_[site][i][1]);
+							newconf_str[site2string_[site][i][0]][k].push_back(confindex_[newconf[k][j]]);
 						}
 					}
 				}
 			}
 
 			for (int i = 0; i < M_; i++) {
-				logvaldiffs += strings_[i].LogValDiff(extract(v, i), tochange_str[i], newconf[i]);
+				logvaldiffs += strings_[i].LogValDiff(extract(v, i), tochange_str[i], newconf_str[i]);
 			}
 			
 			//InfoMessage() << "LogValDiff full ended" << std::endl;
@@ -273,22 +284,23 @@ namespace netket {
 
 			int site = 0;
 			std::vector<std::vector<int>> toflip_str, newconf_str;
+			std::vector<int> pushback_vec;
 			for (int i = 0; i < M_; i++) {
-				toflip_str.push_back(std::vector<int> x);
-				newconf_str.push_back(std::vector<int> x);
+				toflip_str.push_back(pushback_vec);
+				newconf_str.push_back(pushback_vec);
 			}
 
 			// Create string's tochange and newconf
 			for (std::size_t j = 0; j < nflip; j++) {
 				site = toflip[j];
-				for (int i = 0; i < site2string[site].size(); i++) {
-					toflip_str[site2string[site][i][0]].push_back(site2string[site][i][1]);
-					newconf_str[site2string[site][i][0]].push_back(confindex_[newconf[j]]);
+				for (int i = 0; i < site2string_[site].size(); i++) {
+					toflip_str[site2string_[site][i][0]].push_back(site2string_[site][i][1]);
+					newconf_str[site2string_[site][i][0]].push_back(confindex_[newconf[j]]);
 				}
 			}
 
 			for (int i = 0; i < M_; i++) {
-				result += strings_[i].LogValDiff(extract(v, i), toflip_str[i], newconf_str[i]);
+				result += strings_[i].LogValDiff(extract(v, i), toflip_str[i], newconf_str[i], lt);
 			}
 			return result;
 		};

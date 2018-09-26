@@ -55,11 +55,12 @@ namespace netket {
 
 		void Init() {
 			// Initialize parameters
-			MatrixType init_mat = MatrixType::Zeros(D, D);
+			std::vector<MatrixType> pushback_vec;
+			MatrixType init_mat = MatrixType::Zero(D_, D_);
 			npar_ = symperiod_ * d_ * D_ * D_;
 
 			for (int site = 0; site < symperiod_; site++) {
-				W_.push_back(std::vector<MatrixType> x);
+				W_.push_back(pushback_vec);
 				for (int spin = 0; spin < d_; spin++) {
 					W_[site].push_back(init_mat);
 				}
@@ -70,11 +71,11 @@ namespace netket {
 			return npar_;
 		};
 
-		VectorType GetParameters() override {
+		VectorType GetParameters() {
 			int k = 0;
 			VectorType pars(npar_);
 
-			for (int site = 0; p < symperiod_; site++) {
+			for (int site = 0; site < symperiod_; site++) {
 				for (int spin = 0; spin < d_; spin++) {
 					for (int i = 0; i < D_; i++) {
 						for (int j = 0; j < D_; j++) {
@@ -87,10 +88,10 @@ namespace netket {
 			return pars;
 		};
 
-		void SetParameters(const VectorType &pars) override {
+		void SetParameters(const VectorType &pars) {
 			int k = 0;
 
-			for (int site = 0; p < symperiod_; site++) {
+			for (int site = 0; site < symperiod_; site++) {
 				for (int spin = 0; spin < d_; spin++) {
 					for (int i = 0; i < D_; i++) {
 						for (int j = 0; j < D_; j++) {
@@ -106,13 +107,13 @@ namespace netket {
 		inline void SetParametersIdentity(const VectorType &pars) {
 			int k = 0;
 
-			for (int site = 0; p < symperiod_; site++) {
+			for (int site = 0; site < symperiod_; site++) {
 				for (int spin = 0; spin < d_; spin++) {
 					for (int i = 0; i < D_; i++) {
 						for (int j = 0; j < D_; j++) {
 							W_[site][spin](i, j) = pars(k);
 							if (i == j) {
-								W_[p](i, j) += T(1, 0);
+								W_[site][spin](i, j) += T(1, 0);
 							}
 							k++;
 						}
@@ -123,9 +124,10 @@ namespace netket {
 
 		T FullProduct(const std::vector<int> &v) {
 			MatrixType p = W_[0][v[0]];
-			for (int site = 0; site < N_; site++) {
-				p *= W[site % symperiod_][v[site]]
+			for (int site = 1; site < N_; site++) {
+				p *= W_[site % symperiod_][v[site]];
 			};
+			return p.trace();
 		};
 
 		// Auxiliary function for sorting indeces 
@@ -155,9 +157,6 @@ namespace netket {
 
 			const std::size_t nconn = tochange.size();
 			VectorType logvaldiffs = VectorType::Zero(nconn);
-			if (nconn <= 0) {
-				return VectorType::Zero(nconn);
-			}
 
 			int site = 0;
 			std::size_t nchange;
@@ -200,7 +199,8 @@ namespace netket {
 
 		// Ignore lookups for now
 		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
-			const std::vector<int> &newconf) {
+			const std::vector<int> &newconf,
+			const LookupType &lt) {
 
 			const std::size_t nflip = toflip.size();
 			if (nflip <= 0) {
@@ -211,15 +211,15 @@ namespace netket {
 			StateType current_psi = mps_contraction(v, 0, N_).trace();
 			MatrixType new_prods(D_, D_);
 
-			if (toflip[0] == 0) {
-				new_prods = W_[0][newconf[0]];
+			if (toflip[sorted_ind[0]] == 0) {
+				new_prods = W_[0][newconf[sorted_ind[0]]];
 			}
 			else {
-				new_prods = mps_contraction(v, 0, toflip[sorted_ind[0]]) * W_[toflip[0] % symperiod_][newconf[sorted_ind[0]]];
+				new_prods = mps_contraction(v, 0, toflip[sorted_ind[0]]) * W_[toflip[sorted_ind[0]] % symperiod_][newconf[sorted_ind[0]]];
 			}
 			for (std::size_t i = 1; i < nflip; i++) {
 				//InfoMessage() << "toflip = " << toflip[i] << std::endl;
-				new_prods *= mps_contraction(v, toflip[sorted_ind[i-1]] + 1, toflip[sorted_ind[i]]) * W_[toflip[sorted_ind[i]] % symperiod_][newconf[sorted_ind[i]]];
+				new_prods *= mps_contraction(v, toflip[sorted_ind[i - 1]] + 1, toflip[sorted_ind[i]]) * W_[toflip[sorted_ind[i]] % symperiod_][newconf[sorted_ind[i]]];
 			}
 			if (toflip[nflip - 1] < N_ - 1) {
 				new_prods *= mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_);
@@ -229,7 +229,7 @@ namespace netket {
 		};
 
 		// Derivative with full calculation
-		VectorType DerLog(const std::vector<int> &v) override {
+		VectorType DerLog(const std::vector<int> &v) {
 			const int Dsq = D_ * D_;
 			//ComputeVtilde(v, vtilde_);
 			MatrixType temp_product(D_, D_);
@@ -258,6 +258,7 @@ namespace netket {
 
 			return der / left_prods[N_ - 1].trace();
 		};
+	};
 } // namespace netket
 
 #endif
