@@ -17,6 +17,7 @@
 #include <vector>
 #include "Lookup/lookup.hpp"
 #include "Utils/all_utils.hpp"
+#include "mps_calculator.hpp"
 
 #ifndef NETKET_SBS_HPP
 #define NETKET_SBS_HPP
@@ -37,21 +38,24 @@ namespace netket {
 		// Number of strings
 		int M_;
 
-		// Number of variational parameters
+		// Bond dimension of each string (allow different dimensions among strings)
+		std::vector<int> Dstr_;
+		// Length of each string (allow different lengths)
+		std::vector<int> Lstr_;
+
+		// Number of total SBS variational parameters
 		int npar_;
 
 		// Map from Hilbert states to MPS indices
 		std::map<double, int> confindex_;
 
 		// Map from site numbering in v to numbering to each string
-		// for each component of v we get a vector of the strings and the corresponding positions of this site
-		// stored as (N, 
+		// for each site in v we get n 2-component vector: (string number, index within string), where n is the number of strings that the site is in
+		std::vector<std::vector<std::vector<int>>> site2string_;
 
-		// Parameters stored as (string, nr of site on string, spin value, D, D)
-		std::vector<std::vector<std::vector<MatrixType>>> W_;
+		// Vector that stores the MPS object for each string
+		std::vector<MPSCalculator> strings_;
 		
-		
-
 		// Local lookup matrices
 		//std::vector<MatrixType> loc_lt;
 		// Local vectors to transform {-1, 1} to {0, 1}
@@ -64,88 +68,90 @@ namespace netket {
 		using LookupType = Lookup<T>;
 
 		// constructor
-		explicit MPSPeriodic(const Hilbert &hilbert, const json &pars)
+		explicit SBS(const Hilbert &hilbert, const json &pars)
 			: N_(hilbert.Size()), hilbert_(hilbert), d_(hilbert.LocalSize()) {
 			from_json(pars);
 		}
 
 		// Auxiliary function that defines the matrices
 		void Init() {
-			MatrixType x = MatrixType::Zero(D_, D_);
-			npar_ = N_ * d_ * D_ * D_;
+			std::vector<int> two_component_vec;
+			two_component_vec.push_back(0);
+			two_component_vec.push_back(0);
 
-			for (int i = 0; i < N_*d_; i++) {
-				W_.push_back(x);
+			// Default parameters initializations (may change these if we add additional setting options)
+			// 1) Initialize parameters Dstr_ and Lstr_ vector with the same user dimension and length for all strings
+			//    currently all strings will cover the whole configuration (we have to change that with settings)
+			for (int string = 0; string < M_; string++) {
+				Dstr_.push_back(Duser_);
+				Lstr_.push_back(N_);
 			}
-
-			// Machine creation messages
-			InfoMessage() << "Periodic MPS machine with " << N_ << " sites created" << std::endl;
-			InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << D_ << std::endl;
-			InfoMessage() << "The number of variational parameters is " << npar_ << std::endl;
+			// 2) Initialize MPS objects with the correct dimensions as well as site2string vector
+			//	  Also calculate npar_
+			//    Note: currently we do not use symmetries in the MPS so symperiod = length of MPS
+			npar_ = 0;
+			for (int i = 0; i < M_; i++) {
+				strings_.push_back(MPSCalculator x(Lstr_[i], d_, Dstr_[i], Lstr_[i]));
+				npar_ += strings_[i].Npar();
+			}
+			// 3) Initialize site2string vector.
+			//    In the current default setting each site belongs to all strings
+			for (int site = 0; site < N_; site++) {
+				site2string_.push_back(std::vector<std::vector<int>> x);
+				for (int i = 0; i < M_; i++) {
+					site2string_[site].push_back(two_component_vec);
+					for (int j = 0; j < M_; j++) {
+						site2string_[site][i][0] = j
+						site2string_[site][i][1] = site
+					}
+				}
+			}
 
 			// Initialize map from Hilbert space states to MPS indices
 			auto localstates = hilbert_.LocalStates();
 			for (int i = 0; i < d_; i++) {
 				confindex_[localstates[i]] = i;
 			}
+
+			// Machine creation messages
+			InfoMessage() << "SBS machine with " << N_ << " sites created" << std::endl;
+			InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << Duser_ << std::endl;
+			InfoMessage() << "Number of strings M = " << M_ << std::endl;
+			InfoMessage() << "Same bond dimension in all strings" << std::endl;
+			InfoMessage() << "The number of variational parameters is " << npar_ << std::endl;
 		};
-
-		// Auxiliary function that computes local vector vtilde_
-		//inline void ComputeVtilde(const Eigen::VectorXd &v, Eigen::VectorXd &vtilde) {
-		//	vtilde = (v + Eigen::VectorXd::Ones(N_)) / 2;
-		//}
-
-		// Auxiliary function that transforms newconf to {0,1}
-		//inline int ComputeNewConftilde(const double x) {
-		//	return (int)((x + 1) / 2);
-		//}
 
 		int Npar() const override { return npar_; };
 
 		VectorType GetParameters() override {
-			int k = 0;
+			int seg_init = 0;
 			VectorType pars(npar_);
 
-			for (int p = 0; p < N_*d_; p++) {
-				for (int i = 0; i < D_; i++) {
-					for (int j = 0; j < D_; j++) {
-						pars(k) = W_[p](i, j);
-						k++;
-					}
-				}
+			for (int i = 0; i < M_; i++) {
+				pars.segment(seg_init, strings_[i].Npar()) = strings_[i].GetParameters();
+				seg_init += strings_[i].Npar();
 			}
 			return pars;
 		};
 
 		void SetParameters(const VectorType &pars) override {
-			int k = 0;
+			int seg_init = 0;
 
-			for (int p = 0; p < N_*d_; p++) {
-				for (int i = 0; i < D_; i++) {
-					for (int j = 0; j < D_; j++) {
-						W_[p](i, j) = pars(k);
-						k++;
-					}
-				}
+			for (int i = 0; i < M_; i++) {
+				strings_[i].SetParameters(pars.segment(seg_init, strings_[i].Npar()));
+				seg_init += strings_[i].Npar();
 			}
 		};
 
 		// Auxiliary function used for setting initial random parameters and adding identities in every matrix
 		inline void SetParametersIdentity(const VectorType &pars) {
-			int k = 0;
+			int seg_init = 0;
 
-			for (int p = 0; p < N_*d_; p++) {
-				for (int i = 0; i < D_; i++) {
-					for (int j = 0; j < D_; j++) {
-						W_[p](i, j) = pars(k);
-						if (i == j) {
-							W_[p](i, j) += T(1, 0);
-						}
-						k++;
-					}
-				}
+			for (int i = 0; i < M_; i++) {
+				strings_[i].SetParametersIdentity(pars.segment(seg_init, strings_[i].Npar()));
+				seg_init += strings_[i].Npar();
 			}
-		};
+		}
 
 		void InitRandomPars(int seed, double sigma) override {
 			VectorType pars(npar_);
@@ -156,52 +162,10 @@ namespace netket {
 
 		int Nvisible() const override { return N_; };
 
+		// Ignore lookups for now 
 		void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
-			int site;
-			//ComputeVtilde(v, vtilde_);
-			// Initializes local lookup too! (commented for now)
-			//std::vector<MatrixType> loc_lt;
-
-			// First (left) site
-			_InitLookup_check(lt, 0);
-			lt.M(0) = W_[confindex_[v(0)]];
-			//loc_lt.push_back(W_[(int)vtilde_(0)]);
-
-			// Last (right) site
-			_InitLookup_check(lt, 1);
-			lt.M(1) = W_[d_ * (N_ - 1) + confindex_[v(N_ - 1)]];
-			//loc_lt.push_back(W_[d_ * (N_ - 1) + (int)vtilde_(N_ - 1)]);
-
-			// Rest sites
-			for (int i = 2; i < 2 * N_; i += 2) {
-				_InitLookup_check(lt, i);
-				site = i / 2;
-				lt.M(i) = lt.M(i - 2) * W_[d_ * site + confindex_[v(site)]];
-				//loc_lt.push_back(lt.M(i));
-
-				_InitLookup_check(lt, i + 1);
-				site = N_ - 1 - site;
-				lt.M(i + 1) = W_[d_ * site + confindex_[v(site)]] * lt.M(i - 1);
-				//loc_lt.push_back(lt.M(i + 1));
-			}
+			return;
 		};
-
-		//Auxiliary function that calculates all left and right contractions (not ready yet)
-		/**
-		inline std::vector<MatrixType> initialize_left_right(const Eigen::VectorXd &vtilde) {
-			int site;
-			std::vector<MatrixType> prods;
-
-			prods.push_back(W_[(int)vtilde(0)]);
-			prods.push_back(W_[(int)vtilde(N_ - 1)]);
-
-			for (int i = 2; i < 2 * N_; i += 2) {
-				site = i / 2;
-				prods.push_back(prods[i - 2] * W_[d_ * site + (int)vtilde(site)]);
-				prods.push_back(W_[(int)vtilde(site) * prods[i - 2]]);
-			}
-			return prods;
-		}; */
 
 		// Auxiliary function
 		inline void _InitLookup_check(LookupType &lt, int i) {
@@ -224,97 +188,36 @@ namespace netket {
 			return idx;
 		};
 
+		// Ignore lookups for now
 		void UpdateLookup(const Eigen::VectorXd &v,
 			const std::vector<int> &tochange,
 			const std::vector<double> &newconf,
 			LookupType &lt) override {
-			//ComputeVtilde(v, vtilde_);
-			// Updates local lookup too! (commented for now)
-			std::size_t nchange = tochange.size();
-			if (nchange <= 0) {
-				return;
-			}
-			std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
-			int site = tochange[sorted_ind[0]];
-
-			//InfoMessage() << "Lookup update called" << std::endl;
-			//for (std::size_t k = 0; k < nchange; k++) {
-			//	InfoMessage() << tochange[sorted_ind[k]] << std::endl;
-			//}
-
-			// Update left (site++)
-			if (site == 0) {
-				lt.M(0) = W_[confindex_[newconf[sorted_ind[0]]]];
-				//loc_lt[0] = lt.M(0);
-			}
-			else {
-				lt.M(2 * site) = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[newconf[sorted_ind[0]]]];
-				//loc_lt[2 * site] = lt.M(2 * site);
-			}
-			for (std::size_t k = 1; k < nchange; k++) {
-				for (site = tochange[sorted_ind[k - 1]] + 1; site < tochange[sorted_ind[k]]; site++) {
-					lt.M(2 * site) = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[v(site)]];
-					//loc_lt[2 * site] = lt.M(2 * site);
-				}
-				site = tochange[sorted_ind[k]];
-				lt.M(2 * site) = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[newconf[sorted_ind[k]]]];
-				//loc_lt[2 * site] = lt.M(2 * site);
-			}
-			for (int site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
-				lt.M(2 * site) = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[v(site)]];
-				//loc_lt[2 * site] = lt.M(2 * site);
-			}
-
-
-			//InfoMessage() << "Lookup update left completed" << std::endl;
-
-			// Update right (site--)
-			site = tochange[sorted_ind[nchange - 1]];
-			if (site == N_ - 1) {
-				lt.M(1) = W_[d_ * (N_ - 1) + confindex_[newconf[sorted_ind[nchange - 1]]]];
-			}
-			else {
-				lt.M(2 * (N_ - site) - 1) = W_[d_ * site + confindex_[newconf[sorted_ind[nchange - 1]]]] * lt.M(2 * (N_ - site) - 3);
-			}
-
-			//InfoMessage() << "First right assigned" << std::endl;
-
-			for (int k = nchange - 2; k >= 0; k--) {
-				for (site = tochange[sorted_ind[k + 1]] - 1; site > tochange[sorted_ind[k]]; site--) {
-					lt.M(2 * (N_ - site) - 1) = W_[d_ * site + confindex_[v(site)]] * lt.M(2 * (N_ - site) - 3);
-				}
-				site = tochange[sorted_ind[k]];
-				lt.M(2 * (N_ - site) - 1) = W_[d_ * site + confindex_[newconf[sorted_ind[k]]]] * lt.M(2 * (N_ - site) - 3);
-			}
-
-			//InfoMessage() << "Middle loops done" << std::endl;
-
-			for (site = tochange[sorted_ind[0]] - 1; site >= 0; site--) {
-				lt.M(2 * (N_ - site) - 1) = W_[d_ * site + confindex_[v(site)]] * lt.M(2 * (N_ - site) - 3);
-			}
-
-			//InfoMessage() << "Lookup update ended" << std::endl;
+			return;
 		};
+
+		// Auxiliary function that takes v and returns the visible vector for the string
+		inline std::vector<int> extract(const Eigen::VectorXd &v, const int string)
+		{
+			std::vector<int> x
+			for (int i = 0; i < Lstr_[string]; i++)
+			{
+				x.push_back(confindex_[v(string2site[string][i])]);
+			}
+			return x;
+		}
 
 		T LogVal(const Eigen::VectorXd &v) override {
-			//ComputeVtilde(v, vtilde_);
-			MatrixType p = W_[confindex_[v(0)]];
-			for (int site = 1; site < N_; site++) { 
-				p *= W_[d_ * site + confindex_[v(site)]];
+			StateType s = 0;
+			for (int i = 0; i < M_; i++) { 
+				s += std::log(strings_[i].FullProduct(extract(v, i)));
 			}
-			return std::log(p.trace());
+			return s;
 		};
 
+		// Ignore lookups for now
 		T LogVal(const Eigen::VectorXd &v, const LookupType &lt) override {
-			//ComputeVtilde(v, vtilde_);
-			//MatrixType p = W_[(int)vtilde_(0)];
-			//for (int site = 1; site < N_; site++) {
-			//	p *= W_[d_ * site + (int)vtilde_(site)];
-			//}
-
-			//InfoMessage() << "LogVal = " << std::log(p.trace()) << std::endl;
-
-			return std::log(lt.M(2 * N_ - 2).trace());
+			return LogVal(v);
 		};
 
 		VectorType LogValDiff(
@@ -322,175 +225,112 @@ namespace netket {
 			const std::vector<std::vector<double>> &newconf) override {
 			const std::size_t nconn = tochange.size();
 			int site = 0;
-			//ComputeVtilde(v, vtilde_);
-			std::size_t nchange;
-			std::vector<std::size_t> sorted_ind;
-			VectorType logvaldiffs=VectorType::Zero(nconn);
-			StateType current_psi = mps_contraction(v, 0, N_).trace();
-			MatrixType new_prods(D_, D_);
 
-			// current_prod calculation only needs to be done once. Fix that
+			std::size_t nchange;
+			VectorType logvaldiffs = VectorType::Zero(nconn);
+
+			// Initialize string specific tochange and newconf vectors
+			std::vector<std::vector<std::vector<int>>> tochange_str.fill(M_), newconf_str.fill(M_);
+			for (int i = 0; i < M_; i++) {
+				tochange_str[i].push_back(std::vector<std::vector<int>> x.fill(nconn));
+				newconf_str[i].push_back(std::vector<std::vector<int>> x.fill(nconn));
+			}
+
+			// Create tochange and newconf vectors for each string
 			for (std::size_t k = 0; k < nconn; k++) {
 				nchange = tochange[k].size();
-
-				//InfoMessage() << "k = " << k << " nchange = " << nchange << std::endl;
 				if (nchange > 0) {
-					sorted_ind = sort_indeces(tochange[k]);
-					site = tochange[k][sorted_ind[0]];
-
-					if (site == 0) {
-						new_prods = W_[confindex_[newconf[k][sorted_ind[0]]]];
+					// Create string's tochange and newconf
+					for (std::size_t j = 0; j < nchange; j++) {
+						site = tochange[k][j];
+						for (int i = 0; i < site2string[site].size(); i++) {
+							tochange_str[site2string[site][i][0]][k].push_back(site2string[site][i][1]);
+							newconf_str[site2string[site][i][0]][k].push_back(confindex_[newconf[k][j]]);
+						}
 					}
-					else {
-						new_prods = mps_contraction(v, 0, site) * W_[d_ * site + confindex_[newconf[k][sorted_ind[0]]]];
-					}
-
-					for (std::size_t i = 1; i < nchange; i++) {
-						site = tochange[k][sorted_ind[i]];
-						new_prods *= mps_contraction(v, tochange[k][sorted_ind[i - 1]] + 1, site) * W_[d_ * site + confindex_[newconf[k][sorted_ind[i]]]];
-					}
-					site = tochange[k][sorted_ind[nchange - 1]];
-					if (site < N_ - 1) {
-						new_prods *= mps_contraction(v, site + 1, N_);
-					}
-					
-					logvaldiffs(k) = std::log(new_prods.trace() / current_psi);
 				}
 			}
+
+			for (int i = 0; i < M_; i++) {
+				logvaldiffs += strings_[i].LogValDiff(extract(v, i), tochange_str[i], newconf[i]);
+			}
+			
 			//InfoMessage() << "LogValDiff full ended" << std::endl;
+
 			return logvaldiffs;
 		};
 
-		//Auxiliary function that calculates contractions from site1 to site2
-		inline MatrixType mps_contraction(const Eigen::VectorXd &v,
-			const int &site1, const int &site2) {
-			MatrixType c = MatrixType::Identity(D_, D_);
-			for (int site = site1; site < site2; site++) {
-				c *= W_[d_ * site + confindex_[v(site)]];
+		// Ignore lookups for now (copy the previous function)
+		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
+			const std::vector<double> &newconf,
+			const LookupType &lt) override {
+
+			const std::size_t nflip = toflip.size();
+			T result = T(0, 0);
+			if (nflip <= 0) {
+				return T(0, 0);
 			}
-			return c;
+
+			int site = 0;
+			std::vector<std::vector<int>> toflip_str, newconf_str;
+			for (int i = 0; i < M_; i++) {
+				toflip_str.push_back(std::vector<int> x);
+				newconf_str.push_back(std::vector<int> x);
+			}
+
+			// Create string's tochange and newconf
+			for (std::size_t j = 0; j < nflip; j++) {
+				site = toflip[j];
+				for (int i = 0; i < site2string[site].size(); i++) {
+					toflip_str[site2string[site][i][0]].push_back(site2string[site][i][1]);
+					newconf_str[site2string[site][i][0]].push_back(confindex_[newconf[j]]);
+				}
+			}
+
+			for (int i = 0; i < M_; i++) {
+				result += strings_[i].LogValDiff(extract(v, i), toflip_str[i], newconf_str[i]);
+			}
+			return result;
 		};
 
-		// Ignore lookups for now (copy the previous function)
 		/**
 		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
 			const std::vector<double> &newconf,
 			const LookupType &lt) override {
-			const std::size_t nflip = toflip.size();
-			ComputeVtilde(v, vtilde_);
-			if (nflip <= 0) {
-				return T(0, 0);
-			}
-			StateType current_psi = mps_contraction(vtilde_, 0, N_).trace();
-			MatrixType new_prods(D_, D_);
-
-			if (toflip[0] == 0) {
-				new_prods = W_[(int)ComputeNewConftilde(newconf[0])];
-			}
-			else {
-				new_prods = mps_contraction(vtilde_, 0, toflip[0]) * W_[d_ * toflip[0] + (int)ComputeNewConftilde(newconf[0])];
-			}
-			for (std::size_t i = 1; i < nflip; i++) {
-				//InfoMessage() << "toflip = " << toflip[i] << std::endl;
-				new_prods *= mps_contraction(vtilde_, toflip[i - 1] + 1, toflip[i]) * W_[d_ * toflip[i] + (int)ComputeNewConftilde(newconf[i])];
-			}
-			if (toflip[nflip - 1] < N_ - 1) {
-				new_prods *= mps_contraction(vtilde_, toflip[nflip - 1] + 1, N_);
-			}
-			//InfoMessage() << "LogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
-			return std::log(new_prods.trace() / current_psi);
-		};*/
-
-		
-		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
-			const std::vector<double> &newconf,
-			const LookupType &lt) override {
-			// Assumes that vector toflip is in ascending order
-			//ComputeVtilde(v, vtilde_);
-			const std::size_t nflip = toflip.size();
-			if (nflip <= 0) {
-				return T(0, 0);
-			}
-			MatrixType new_prod;
-			std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
-			int site = toflip[sorted_ind[0]];
 			
-			//InfoMessage() << "LogValDiff lookup called" << std::endl;
-			//for (std::size_t k = 0; k < nflip; k++) {
-			//	InfoMessage() << toflip[k] << std::endl;
-			//}
-
-			if (site == 0) {
-				new_prod = W_[confindex_[newconf[sorted_ind[0]]]];
+			
 			}
-			else {
-				new_prod = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[newconf[sorted_ind[0]]]];
-			}
-
-			for (std::size_t k = 1; k < nflip; k++) {
-				site = toflip[sorted_ind[k]];
-				new_prod *= mps_contraction(v, toflip[sorted_ind[k - 1]] + 1, site) * W_[d_ * site + confindex_[newconf[sorted_ind[k]]]];
-			}
-
-			//InfoMessage() << "LogValDiff lookup ended" << std::endl;
-
-			site = toflip[sorted_ind[nflip - 1]];
-			if (site == N_ - 1) {
-				return std::log(new_prod.trace() / lt.M(2 * N_ - 2).trace()); // A log is needed here
-			}
-			else {
-				return std::log((new_prod * lt.M(2 * (N_ - site) - 3)).trace()/ lt.M(2 * N_ - 2).trace()); // A log is needed here
-			}
-		};
+		};*/
 
 		// Derivative that uses local lookups (deleted)
 
 		// Derivative with full calculation
 		VectorType DerLog(const Eigen::VectorXd &v) override {
-			const int Dsq = D_ * D_;
-			//ComputeVtilde(v, vtilde_);
-			MatrixType temp_product(D_, D_);
-			std::vector<MatrixType> left_prods, right_prods;
 			VectorType der = VectorType::Zero(npar_);
+			int seg_init = 0;
 
-			//InfoMessage() << "Derivative called" << std::endl;
-			// Calculate products
-			left_prods.push_back(W_[confindex_[v(0)]]);
-			right_prods.push_back(W_[d_ * (N_ - 1) + confindex_[v(N_ - 1)]]);
-			for (int site = 1; site < N_- 1; site++) {
-				left_prods.push_back(left_prods[site - 1] * W_[d_ * site + confindex_[v(site)]]);
-				right_prods.push_back(W_[d_ * (N_ - 1 - site) + confindex_[v(N_ - 1 - site)]] * right_prods[site-1]);
+			for (int i = 0; i < M_; i++) {
+				der.segment(seg_init, strings_[i].Npar()) = strings_[i].DerLog(extract(v, i));
+				seg_init += strings_[i].Npar();
 			}
-			left_prods.push_back(left_prods[N_ -2] * W_[d_ * (N_-1) + confindex_[v(N_ -1)]]);
-			right_prods.push_back(W_[confindex_[v(0)]] * right_prods[N_ - 2]);
 
-			der.segment(confindex_[v(0)] * Dsq, Dsq) = Eigen::Map<VectorType>((right_prods[N_ - 2]).transpose().data(), Dsq);
-			for (int site = 1; site < N_ - 1; site++) {
-				temp_product = right_prods[N_ - site - 2] * left_prods[site - 1];
-				der.segment((site * d_ + confindex_[v(site)])* Dsq, Dsq) = Eigen::Map<VectorType>((temp_product).transpose().data(), Dsq);
-			}
-			der.segment(((N_ - 1) * d_ + confindex_[v(N_ - 1)])* Dsq, Dsq) = Eigen::Map<VectorType>((left_prods[N_ - 2]).transpose().data(), Dsq);
-
-			//InfoMessage() << "Derivative ended, k = " << k + Dsq << std::endl;
-			//der = der / left_prods[N_ - 1].trace();
-
-			return der / left_prods[N_ - 1].trace();
+			return der;
 		};
 
 		// Json functions
 		const Hilbert &GetHilbert() const { return hilbert_; };
 
 		void to_json(json &j) const override {
-		  j["Machine"]["Name"] = "MPSperiodic";
+		  j["Machine"]["Name"] = "SBS";
 		  j["Machine"]["Nspins"] = N_;
-		  j["Machine"]["BondDim"] = D_;
+		  j["Machine"]["Strings"] = M_;
+		  j["Machine"]["BondDim"] = Duser_;
 		  j["Machine"]["PhysDim"] = d_;
-		  j["Machine"]["W"] = W_;
 		}; 
 
 		void from_json(const json &pars) override {
-		  if (pars.at("Machine").at("Name") != "MPSperiodic") {
-			throw InvalidInputError("Error while constructing MPS from Json input");
+		  if (pars.at("Machine").at("Name") != "SBS") {
+			throw InvalidInputError("Error while constructing SBS from Json input");
 		  }
 
 		  if (FieldExists(pars["Machine"], "Nspins")) {
@@ -508,10 +348,17 @@ namespace netket {
 		  }
 
 		  if (FieldExists(pars["Machine"], "BondDim")) {
-			D_ = pars["Machine"]["BondDim"];
+			Duser_ = pars["Machine"]["BondDim"];
 		  }
 		  else {
 			  throw InvalidInputError("Unspecified bond dimension");
+		  }
+
+		  if (FieldExists(pars["Machine"], "Strings")) {
+			  M_ = pars["Machine"]["Strings"];
+		  }
+		  else {
+			  throw InvalidInputError("Unspecified number of strings");
 		  }
 
 		  Init();
