@@ -129,7 +129,7 @@ namespace netket {
 			return N_;
 		};
 
-		void InitLookup(const std::vector<int> &v, const int &start_ind, LookupType &lt) {
+		void InitLookup(const std::vector<int> &v, LookupType &lt, const int &start_ind) {
 			int site;
 
 			// We need 2 * L matrix lookups for each string, where L is the string's length
@@ -166,10 +166,10 @@ namespace netket {
 		};
 
 		void UpdateLookup(const std::vector<int> &v,
-			const int &start_ind,
 			const std::vector<int> &tochange,
 			const std::vector<int> &newconf,
-			LookupType &lt) {
+			LookupType &lt,
+			const int &start_ind) {
 
 			std::size_t nchange = tochange.size();
 			if (nchange <= 0) {
@@ -245,6 +245,10 @@ namespace netket {
 			return p.trace();
 		};
 
+		T LookupProduct(const LookupType &lt, const int &start_ind) {
+			return lt.M(start_ind + 2 * N_ - 2).trace();
+		};
+
 		// Auxiliary function for sorting indeces 
 		// (copied from stackexchange - original answer by Lukasz Wiklendt)
 		inline std::vector<std::size_t> sort_indeces(const std::vector<int> &v) {
@@ -265,54 +269,6 @@ namespace netket {
 			}
 			return c;
 		};
-
-		// No k-dependent version
-		/**
-		VectorType LogValDiff(
-			const std::vector<int> &v, const std::vector<std::vector<int>> &tochange,
-			const std::vector<std::vector<int>> &newconf) {
-
-			const std::size_t nconn = tochange.size();
-			VectorType logvaldiffs = VectorType::Zero(nconn);
-
-			int site = 0;
-			std::size_t nchange;
-			std::vector<std::size_t> sorted_ind;
-			StateType current_psi = mps_contraction(v, 0, N_).trace();
-			MatrixType new_prods(D_, D_);
-
-			for (std::size_t k = 0; k < nconn; k++) {
-				nchange = tochange[k].size();
-
-				//InfoMessage() << "k = " << k << " nchange = " << nchange << std::endl;
-				if (nchange > 0) {
-					sorted_ind = sort_indeces(tochange[k]);
-					site = tochange[k][sorted_ind[0]];
-
-					if (site == 0) {
-						new_prods = W_[0][newconf[k][sorted_ind[0]]];
-					}
-					else {
-						new_prods = mps_contraction(v, 0, site) * W_[site % symperiod_][newconf[k][sorted_ind[0]]];
-					}
-
-					for (std::size_t i = 1; i < nchange; i++) {
-						site = tochange[k][sorted_ind[i]];
-						new_prods *= mps_contraction(v, tochange[k][sorted_ind[i - 1]] + 1, site) * W_[site % symperiod_][newconf[k][sorted_ind[i]]];
-					}
-					site = tochange[k][sorted_ind[nchange - 1]];
-					if (site < N_ - 1) {
-						new_prods *= mps_contraction(v, site + 1, N_);
-					}
-
-					logvaldiffs(k) = std::log(new_prods.trace() / current_psi);
-				}
-			}
-
-			//InfoMessage() << "LogValDiff full ended" << std::endl;
-
-			return logvaldiffs;
-		};*/
 
 		// No k-dependent version
 		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
@@ -346,35 +302,70 @@ namespace netket {
 			return std::log(new_prods.trace() / current_psi);
 		};
 
-		// Ignore lookups for now
 		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
 			const std::vector<int> &newconf,
-			const LookupType &lt) {
+			const LookupType &lt, const int &startind) {
 
 			const std::size_t nflip = toflip.size();
 			if (nflip <= 0) {
 				return T(0, 0);
 			}
-
+			MatrixType new_prod;
 			std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
-			StateType current_psi = mps_contraction(v, 0, N_).trace();
-			MatrixType new_prods(D_, D_);
+			int site = toflip[sorted_ind[0]];
 
-			if (toflip[sorted_ind[0]] == 0) {
-				new_prods = W_[0][newconf[sorted_ind[0]]];
+			//InfoMessage() << "LogValDiff lookup called" << std::endl;
+			//for (std::size_t k = 0; k < nflip; k++) {
+			//	InfoMessage() << toflip[k] << std::endl;
+			//}
+
+			if (site == 0) {
+				new_prod = W_[0][newconf[sorted_ind[0]]];
 			}
 			else {
-				new_prods = mps_contraction(v, 0, toflip[sorted_ind[0]]) * W_[toflip[sorted_ind[0]] % symperiod_][newconf[sorted_ind[0]]];
+				new_prod = lt.M(startind + 2 * (site - 1)) * W_[site % symperiod_][newconf[sorted_ind[0]]];
 			}
-			for (std::size_t i = 1; i < nflip; i++) {
-				//InfoMessage() << "toflip = " << toflip[i] << std::endl;
-				new_prods *= mps_contraction(v, toflip[sorted_ind[i - 1]] + 1, toflip[sorted_ind[i]]) * W_[toflip[sorted_ind[i]] % symperiod_][newconf[sorted_ind[i]]];
+
+			for (std::size_t k = 1; k < nflip; k++) {
+				site = toflip[sorted_ind[k]];
+				new_prod *= mps_contraction(v, toflip[sorted_ind[k - 1]] + 1, site) * W_[site % symperiod_][newconf[sorted_ind[k]]];
 			}
-			if (toflip[nflip - 1] < N_ - 1) {
-				new_prods *= mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_);
+
+			//InfoMessage() << "LogValDiff lookup ended" << std::endl;
+
+			site = toflip[sorted_ind[nflip - 1]];
+			if (site == N_ - 1) {
+				return std::log(new_prod.trace() / lt.M(startind + 2 * N_ - 2).trace());
 			}
-			//InfoMessage() << "LogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
-			return std::log(new_prods.trace() / current_psi);
+			else {
+				return std::log((new_prod * lt.M(startind + 2 * (N_ - site) - 3)).trace() / lt.M(startind + 2 * N_ - 2).trace());
+			}
+		};
+
+		// Lookup LogValDiff that doesn't require v
+		// works only if nflip = 1
+		T FastLogValDiff(const std::vector<int> &toflip,
+			const std::vector<int> &newconf,
+			const LookupType &lt, const int &startind) {
+
+			T new_trace;
+
+			//InfoMessage() << "FastLogValDiff lookup called" << std::endl;
+			//for (std::size_t k = 0; k < nflip; k++) {
+			//	InfoMessage() << toflip[k] << std::endl;
+			//}
+
+			if (toflip[0] == 0) {
+				new_trace = (W_[0][newconf[0]] * lt.M(startind + 2 * N_ - 3)).trace();
+			}
+			else if (toflip[0] == N_ - 1) {
+				new_trace = (lt.M(startind + 2 * (N_ - 2)) * W_[(N_ - 1) % symperiod_][newconf[0]]).trace();
+			}
+			else {
+				new_trace = (lt.M(startind + 2 * (toflip[0] - 1)) * W_[toflip[0] % symperiod_][newconf[0]] * lt.M(startind + 2 * (N_ - toflip[0]) - 3)).trace();
+			}
+
+			return std::log(new_trace / lt.M(startind + 2 * N_ - 2).trace());
 		};
 
 		// Derivative with full calculation

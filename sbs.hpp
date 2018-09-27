@@ -300,12 +300,13 @@ namespace netket {
 
 			for (auto const &ent : string_lists[0]) {
 				i = ent.first;
-				if (string_lists[0][i].size() > 1) {
-					result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
-				}
-				else if (string_lists[0][i].size() > 0) {
-					result += strings_[i].FastLogValDiff(string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
-				}
+				//if (string_lists[0][i].size() > 1) {
+				//	result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				//}
+				//else if (string_lists[0][i].size() > 0) {
+				//	result += strings_[i].FastLogValDiff(string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				//}
+				result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
 			}
 
 			//InfoMessage() << "LogValDiff looukup ended" << std::endl;
