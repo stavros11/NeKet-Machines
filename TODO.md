@@ -1,5 +1,5 @@
 ### Currently working
-- Open MPS, both versions with constant and vector D.
+- Open MPS, versions with constant and vector D.
 - Periodic MPS.
 - Translation invariant periodic MPS with arbitrary symmetry period.
 - General SBS without lookups.
