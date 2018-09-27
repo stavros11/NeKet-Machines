@@ -50,7 +50,7 @@ namespace netket {
 		std::map<double, int> confindex_;
 
 		// Map from site numbering in v to numbering to each string
-		// for each site in v we get n 2-component vector: (string number, index within string), where n is the number of strings that the site is in
+		// for each site in v we get n 2-component vectors: (string number, index within string), where n is the number of strings that the site is in
 		std::vector<std::vector<std::vector<int>>> site2string_;
 		// Map from strings to sites
 		std::vector<std::vector<int>> string2site_;
@@ -103,10 +103,8 @@ namespace netket {
 				site2string_.push_back(pushback_vec2);
 				for (int i = 0; i < M_; i++) {
 					site2string_[site].push_back(two_component_vec);
-					for (int j = 0; j < M_; j++) {
-						site2string_[site][i][0] = j;
-						site2string_[site][i][1] = site;
-					}
+					site2string_[site][i][0] = i;
+					site2string_[site][i][1] = site;
 				}
 			}
 			// 4) Initialize string2site vector
@@ -234,38 +232,40 @@ namespace netket {
 			const Eigen::VectorXd &v, const std::vector<std::vector<int>> &tochange,
 			const std::vector<std::vector<double>> &newconf) override {
 
-			const std::size_t nconn = tochange.size();
-			int site = 0;
-			std::size_t nchange;
-			VectorType logvaldiffs = VectorType::Zero(nconn);
+			//InfoMessage() << "LogValDiff full called" << std::endl;
 
-			// Initialize string specific tochange and newconf vectors
-			std::vector<std::vector<std::vector<int>>> tochange_str(M_), newconf_str(M_);
-			std::vector<std::vector<int>> pushback_vec(nconn);
-			for (int i = 0; i < M_; i++) {
-				tochange_str[i] = pushback_vec;
-				newconf_str[i] = pushback_vec;
+			const std::size_t nconn = tochange.size();
+			if (nconn <= 0) {
+				return VectorType::Zero(nconn);
 			}
 
-			// Create tochange and newconf vectors for each string
+			int i, site, string_nr;
+			std::size_t nchange;
+			VectorType logvaldiffs = VectorType::Zero(nconn);
+			std::map<int, std::vector<int>> string_tochange, string_newconf;
+
 			for (std::size_t k = 0; k < nconn; k++) {
 				nchange = tochange[k].size();
 				if (nchange > 0) {
-					// Create string's tochange and newconf
 					for (std::size_t j = 0; j < nchange; j++) {
 						site = tochange[k][j];
+						// For each site in toflip find the strings it belongs. Save the corresponding positions:
 						for (int i = 0; i < site2string_[site].size(); i++) {
-							tochange_str[site2string_[site][i][0]][k].push_back(site2string_[site][i][1]);
-							newconf_str[site2string_[site][i][0]][k].push_back(confindex_[newconf[k][j]]);
+							string_nr = site2string_[site][i][0];
+							string_tochange[string_nr].push_back(site2string_[site][i][1]);
+							string_newconf[string_nr].push_back(confindex_[newconf[k][j]]);
 						}
+					}
+
+					for (auto const &ent : string_tochange) {
+						i = ent.first;
+						logvaldiffs(k) += strings_[i].LogValDiff(extract(v, i), string_tochange[i], string_newconf[i]);
+						string_tochange[i].clear();
+						string_newconf[i].clear();
 					}
 				}
 			}
 
-			for (int i = 0; i < M_; i++) {
-				logvaldiffs += strings_[i].LogValDiff(extract(v, i), tochange_str[i], newconf_str[i]);
-			}
-			
 			//InfoMessage() << "LogValDiff full ended" << std::endl;
 
 			return logvaldiffs;
@@ -276,32 +276,34 @@ namespace netket {
 			const std::vector<double> &newconf,
 			const LookupType &lt) override {
 
+			//InfoMessage() << "LogValDiff lookup called" << std::endl;
+
 			const std::size_t nflip = toflip.size();
-			T result = T(0, 0);
 			if (nflip <= 0) {
 				return T(0, 0);
 			}
 
-			int site = 0;
-			std::vector<std::vector<int>> toflip_str, newconf_str;
-			std::vector<int> pushback_vec;
-			for (int i = 0; i < M_; i++) {
-				toflip_str.push_back(pushback_vec);
-				newconf_str.push_back(pushback_vec);
-			}
+			T result = T(0, 0);
+			int i, site, string_nr;
+			std::map<int, std::vector<int>> string_toflip, string_newconf;
 
-			// Create string's tochange and newconf
 			for (std::size_t j = 0; j < nflip; j++) {
 				site = toflip[j];
+				// For each site in toflip find the strings it belongs. Save the corresponding positions:
 				for (int i = 0; i < site2string_[site].size(); i++) {
-					toflip_str[site2string_[site][i][0]].push_back(site2string_[site][i][1]);
-					newconf_str[site2string_[site][i][0]].push_back(confindex_[newconf[j]]);
+					string_nr = site2string_[site][i][0];
+					string_toflip[string_nr].push_back(site2string_[site][i][1]);
+					string_newconf[string_nr].push_back(confindex_[newconf[j]]);
 				}
 			}
 
-			for (int i = 0; i < M_; i++) {
-				result += strings_[i].LogValDiff(extract(v, i), toflip_str[i], newconf_str[i], lt);
+			for (auto const &ent : string_toflip) {
+				i = ent.first;
+				result += strings_[i].LogValDiff(extract(v, i), string_toflip[i], string_newconf[i], lt);
 			}
+
+			//InfoMessage() << "LogValDiff looukup ended" << std::endl;
+
 			return result;
 		};
 
@@ -313,8 +315,6 @@ namespace netket {
 			
 			}
 		};*/
-
-		// Derivative that uses local lookups (deleted)
 
 		// Derivative with full calculation
 		VectorType DerLog(const Eigen::VectorXd &v) override {
