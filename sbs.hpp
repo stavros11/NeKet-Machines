@@ -42,6 +42,8 @@ namespace netket {
 		std::vector<int> Dstr_;
 		// Length of each string (allow different lengths)
 		std::vector<int> Lstr_;
+		// Cumulative sum of Lstr used for lookup start indices
+		std::vector<int> Lstr_cumsum_;
 
 		// Number of total SBS variational parameters
 		int npar_;
@@ -91,9 +93,11 @@ namespace netket {
 			// Default parameters initializations (may change these if we add additional setting options)
 			// 1) Initialize parameters Dstr_ and Lstr_ vector with the same user dimension and length for all strings
 			//    currently all strings will cover the whole configuration (we have to change that with settings)
-			for (int string = 0; string < M_; string++) {
+			Lstr_cumsum_.push_back(0);
+			for (int i = 0; i < M_; i++) {
 				Dstr_.push_back(Duser_);
 				Lstr_.push_back(N_);
+				Lstr_cumsum_.push_back(Lstr_cumsum_[i] + 2 * Lstr_[i]);
 			}
 			// 2) Initialize MPS objects with the correct dimensions as well as site2string vector
 			//	  Also calculate npar_
@@ -172,10 +176,8 @@ namespace netket {
 		int Nvisible() const override { return N_; };
 
 		void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
-			int start_ind = 0;
 			for (int i = 0; i < M_; i++) {
-				strings_[i].InitLookup(extract(v, i), start_ind, lt);
-				start_ind += Lstr_[i];
+				strings_[i].InitLookup(extract(v, i), lt, Lstr_cumsum_[i]);
 			}
 		};
 
@@ -185,17 +187,12 @@ namespace netket {
 			LookupType &lt) override {
 			if (tochange.size() > 0) {
 
-				int i_previous = 0, start_ind = 0;
 				int i;
 				std::vector<std::map<int, std::vector<int>>> string_lists = tochange4string(tochange, newconf);
 
 				for (auto const &ent : string_lists[0]) {
 					i = ent.first;
-					for (int j = i_previous; j < i; j++) {
-						start_ind += Lstr_[j];
-					}
-					strings_[i].UpdateLookup(extract(v, i), start_ind, string_lists[0][i], string_lists[1][i], lt);
-					i_previous = i;
+					strings_[i].UpdateLookup(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
 				}
 			}
 		};
@@ -218,9 +215,13 @@ namespace netket {
 			return s;
 		};
 
-		// Ignore lookups for now
 		T LogVal(const Eigen::VectorXd &v, const LookupType &lt) override {
-			return LogVal(v);
+			T s = T(0, 0);
+
+			for (int i = 0; i < M_; i++) {
+				s += std::log(strings_[i].LookupProduct(lt, Lstr_cumsum_[i]));
+			}
+			return s;
 		};
 
 		VectorType LogValDiff(
@@ -256,6 +257,7 @@ namespace netket {
 		};
 
 		// Ignore lookups for now (copy the previous function)
+		/**
 		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
 			const std::vector<double> &newconf,
 			const LookupType &lt) override {
@@ -273,7 +275,37 @@ namespace netket {
 
 			for (auto const &ent : string_lists[0]) {
 				i = ent.first;
-				result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt);
+				result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i]);
+			}
+
+			//InfoMessage() << "LogValDiff looukup ended" << std::endl;
+
+			return result;
+		};*/
+
+		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
+			const std::vector<double> &newconf,
+			const LookupType &lt) override {
+
+			//InfoMessage() << "LogValDiff lookup called" << std::endl;
+
+			std::size_t nflip = toflip.size();
+			if (nflip <= 0) {
+				return T(0, 0);
+			}
+
+			int i;
+			T result = T(0, 0);
+			std::vector<std::map<int, std::vector<int>>> string_lists = tochange4string(toflip, newconf);
+
+			for (auto const &ent : string_lists[0]) {
+				i = ent.first;
+				if (string_lists[0][i].size() > 1) {
+					result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				}
+				else if (string_lists[0][i].size() > 0) {
+					result += strings_[i].FastLogValDiff(string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				}
 			}
 
 			//InfoMessage() << "LogValDiff looukup ended" << std::endl;
@@ -302,16 +334,7 @@ namespace netket {
 			results.push_back(string_tochange);
 			results.push_back(string_newconf);
 			return results;
-		}
-
-		/**
-		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
-			const std::vector<double> &newconf,
-			const LookupType &lt) override {
-			
-			
-			}
-		};*/
+		};
 
 		// Derivative with full calculation
 		VectorType DerLog(const Eigen::VectorXd &v) override {
