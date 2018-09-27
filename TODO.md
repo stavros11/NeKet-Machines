@@ -1,13 +1,16 @@
 ### Currently working
-- Open MPS in Ising1D and Heisenberg1D.
+- Open MPS, both versions with constant and vector D.
+- Periodic MPS.
+- Translation invariant periodic MPS with arbitrary symmetry period.
+- General SBS without lookups.
+All tested only in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does not converge either.
 
-### Not sure
-- Open MPS in BoseHubbard1D works but probably converges to wrong energy (larger bond dimension needed?)
+### Implemented but not working
+- Lookups in SBS: Works only for the special case M=1 (which is MPS). Possibly small bug.
+- Canonical form in Open MPS (doesn't work in Python either).
 
-### Minor changes to do
-- (**DONE**) Add double to int map and index sorting in Periodic MPS similarly to the Open to make it work too.
-- Use inheritance to define Open MPS from the Periodic one in order to delete similar functions in the code.
-
-### Additions
-- Canonical form option.
-- 2D systems (get data from graph object?)
+### Additions needed
+- Setting to save weights for all cases (it is currently commented).
+- Possible use of the `MPSCalculator` class for Periodic and Translation MPS. Currently it is used only in MPS.
+- Add special case of diagonal SBS.
+- Setting for ordering of spins and how to put the strings into graph. Possible connection to graph object. Currently SBS cover the whole graph by default.
