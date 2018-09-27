@@ -82,6 +82,12 @@ namespace netket {
 			two_component_vec.push_back(0);
 			two_component_vec.push_back(0);
 
+			// Initialize map from Hilbert space states to MPS indices
+			auto localstates = hilbert_.LocalStates();
+			for (int i = 0; i < d_; i++) {
+				confindex_[localstates[i]] = i;
+			}
+
 			// Default parameters initializations (may change these if we add additional setting options)
 			// 1) Initialize parameters Dstr_ and Lstr_ vector with the same user dimension and length for all strings
 			//    currently all strings will cover the whole configuration (we have to change that with settings)
@@ -114,12 +120,6 @@ namespace netket {
 				for (int j = 0; j < Lstr_[i]; j++) {
 					string2site_[i].push_back(j);
 				}
-			}
-
-			// Initialize map from Hilbert space states to MPS indices
-			auto localstates = hilbert_.LocalStates();
-			for (int i = 0; i < d_; i++) {
-				confindex_[localstates[i]] = i;
 			}
 
 			// Machine creation messages
@@ -171,38 +171,33 @@ namespace netket {
 
 		int Nvisible() const override { return N_; };
 
-		// Ignore lookups for now 
 		void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
-			return;
-		};
-
-		// Auxiliary function
-		inline void _InitLookup_check(LookupType &lt, int i) {
-			if (lt.MatrixSize() == i) {
-				lt.AddMatrix(D_, D_);
-			}
-			else {
-				lt.M(i).resize(D_, D_);
+			int start_ind = 0;
+			for (int i = 0; i < M_; i++) {
+				strings_[i].InitLookup(extract(v, i), start_ind, lt);
+				start_ind += Lstr_[i];
 			}
 		};
 
-		// Auxiliary function for sorting indeces 
-		// (copied from stackexchange - original answer by Lukasz Wiklendt)
-		inline std::vector<std::size_t> sort_indeces(const std::vector<int> &v) {
-			// initialize original index locations
-			std::vector<std::size_t> idx(v.size());
-			std::iota(idx.begin(), idx.end(), 0);
-			// sort indexes based on comparing values in v
-			std::sort(idx.begin(), idx.end(), [&v](std::size_t i1, std::size_t i2) {return v[i1] < v[i2]; });
-			return idx;
-		};
-
-		// Ignore lookups for now
 		void UpdateLookup(const Eigen::VectorXd &v,
 			const std::vector<int> &tochange,
 			const std::vector<double> &newconf,
 			LookupType &lt) override {
-			return;
+			if (tochange.size() > 0) {
+
+				int i_previous = 0, start_ind = 0;
+				int i;
+				std::vector<std::map<int, std::vector<int>>> string_lists = tochange4string(tochange, newconf);
+
+				for (auto const &ent : string_lists[0]) {
+					i = ent.first;
+					for (int j = i_previous; j < i; j++) {
+						start_ind += Lstr_[j];
+					}
+					strings_[i].UpdateLookup(extract(v, i), start_ind, string_lists[0][i], string_lists[1][i], lt);
+					i_previous = i;
+				}
+			}
 		};
 
 		// Auxiliary function that takes v and returns the visible vector for the string
@@ -239,29 +234,18 @@ namespace netket {
 				return VectorType::Zero(nconn);
 			}
 
-			int i, site, string_nr;
+			int i;
 			std::size_t nchange;
 			VectorType logvaldiffs = VectorType::Zero(nconn);
-			std::map<int, std::vector<int>> string_tochange, string_newconf;
+			std::vector<std::map<int, std::vector<int>>> string_lists;
 
 			for (std::size_t k = 0; k < nconn; k++) {
 				nchange = tochange[k].size();
 				if (nchange > 0) {
-					for (std::size_t j = 0; j < nchange; j++) {
-						site = tochange[k][j];
-						// For each site in toflip find the strings it belongs. Save the corresponding positions:
-						for (int i = 0; i < site2string_[site].size(); i++) {
-							string_nr = site2string_[site][i][0];
-							string_tochange[string_nr].push_back(site2string_[site][i][1]);
-							string_newconf[string_nr].push_back(confindex_[newconf[k][j]]);
-						}
-					}
-
-					for (auto const &ent : string_tochange) {
+					string_lists = tochange4string(tochange[k], newconf[k]);
+					for (auto const &ent : string_lists[0]) {
 						i = ent.first;
-						logvaldiffs(k) += strings_[i].LogValDiff(extract(v, i), string_tochange[i], string_newconf[i]);
-						string_tochange[i].clear();
-						string_newconf[i].clear();
+						logvaldiffs(k) += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i]);
 					}
 				}
 			}
@@ -277,35 +261,48 @@ namespace netket {
 			const LookupType &lt) override {
 
 			//InfoMessage() << "LogValDiff lookup called" << std::endl;
-
-			const std::size_t nflip = toflip.size();
+			
+			std::size_t nflip = toflip.size();
 			if (nflip <= 0) {
 				return T(0, 0);
 			}
 
+			int i;
 			T result = T(0, 0);
-			int i, site, string_nr;
-			std::map<int, std::vector<int>> string_toflip, string_newconf;
+			std::vector<std::map<int, std::vector<int>>> string_lists = tochange4string(toflip, newconf);
 
-			for (std::size_t j = 0; j < nflip; j++) {
-				site = toflip[j];
-				// For each site in toflip find the strings it belongs. Save the corresponding positions:
-				for (int i = 0; i < site2string_[site].size(); i++) {
-					string_nr = site2string_[site][i][0];
-					string_toflip[string_nr].push_back(site2string_[site][i][1]);
-					string_newconf[string_nr].push_back(confindex_[newconf[j]]);
-				}
-			}
-
-			for (auto const &ent : string_toflip) {
+			for (auto const &ent : string_lists[0]) {
 				i = ent.first;
-				result += strings_[i].LogValDiff(extract(v, i), string_toflip[i], string_newconf[i], lt);
+				result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt);
 			}
 
 			//InfoMessage() << "LogValDiff looukup ended" << std::endl;
 
 			return result;
 		};
+
+		// Auxiliary function that gives the tochange and newconf maps for each string
+		inline std::vector<std::map<int, std::vector<int>>> tochange4string(
+			const std::vector<int> &tochange,
+			const std::vector<double> &newconf) {
+
+			int site, string_nr;
+			std::vector<std::map<int, std::vector<int>>> results;
+			std::map<int, std::vector<int>> string_tochange, string_newconf;
+
+			for (std::size_t j = 0; j < tochange.size(); j++) {
+				site = tochange[j];
+				// For each site in toflip find the strings it belongs. Save the corresponding positions:
+				for (int i = 0; i < site2string_[site].size(); i++) {
+					string_nr = site2string_[site][i][0];
+					string_tochange[string_nr].push_back(site2string_[site][i][1]);
+					string_newconf[string_nr].push_back(confindex_[newconf[j]]);
+				}
+			}
+			results.push_back(string_tochange);
+			results.push_back(string_newconf);
+			return results;
+		}
 
 		/**
 		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
@@ -380,13 +377,6 @@ namespace netket {
 		//	W_ = pars["Machine"]["W"];
 		  //}
 		};
-
-		// Still to do: 
-		// Do vectorization for spins more than 1/2. (Done in a sketchy way)
-		// Don't forget the logarithms where needed. (Done)
-		// Upgrade look ups to be more efficient (tree calculation?).
-		// Look ups for LogDer?.
-		// Slight modifications for OBC.
 	};
 
 } // namespace netket

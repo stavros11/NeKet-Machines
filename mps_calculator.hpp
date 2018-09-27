@@ -40,6 +40,9 @@ namespace netket {
 		// Period of translational symmetry (has to be a divisor of N)
 		int symperiod_;
 
+		// Map from Hilbert states to MPS indices
+		//std::map<double, int> confindex_;
+
 		// MPS Matrices (stored as [symperiod, d, D, D]
 		std::vector<std::vector<MatrixType>> W_;
 
@@ -120,6 +123,118 @@ namespace netket {
 					}
 				}
 			}
+		};
+
+		int Nsites() {
+			return N_;
+		};
+
+		void InitLookup(const std::vector<int> &v, const int &start_ind, LookupType &lt) {
+			int site;
+
+			// We need 2 * L matrix lookups for each string, where L is the string's length
+			// other than that lookups work exactly as in the MPS case
+
+			// First (left) site
+			_InitLookup_check(lt, start_ind);
+			lt.M(start_ind) = W_[0][v[0]];
+
+			// Last (right) site
+			_InitLookup_check(lt, start_ind+1);
+			lt.M(start_ind + 1) = W_[(N_ - 1) % symperiod_][v[N_ - 1]];
+
+			// Rest sites
+			for (int i = 2; i < 2 * N_; i += 2) {
+				_InitLookup_check(lt, start_ind + i);
+				site = i / 2;
+				lt.M(start_ind + i) = lt.M(start_ind + i - 2) * W_[(site % symperiod_)][v[site]];
+
+				_InitLookup_check(lt, start_ind + i + 1);
+				site = N_ - 1 - site;
+				lt.M(start_ind + i + 1) = W_[site % symperiod_][v[site]] * lt.M(i - 1);
+			}
+		};
+
+		// Auxiliary function
+		inline void _InitLookup_check(LookupType &lt, int i) {
+			if (lt.MatrixSize() == i) {
+				lt.AddMatrix(D_, D_);
+			}
+			else {
+				lt.M(i).resize(D_, D_);
+			}
+		};
+
+		void UpdateLookup(const std::vector<int> &v,
+			const int &start_ind,
+			const std::vector<int> &tochange,
+			const std::vector<int> &newconf,
+			LookupType &lt) {
+
+			std::size_t nchange = tochange.size();
+			if (nchange <= 0) {
+				return;
+			}
+			std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
+			int site = tochange[sorted_ind[0]];
+
+			//InfoMessage() << "Lookup update called" << std::endl;
+			//for (std::size_t k = 0; k < nchange; k++) {
+			//	InfoMessage() << tochange[sorted_ind[k]] << " , " << newconf[sorted_ind[k]] << std::endl;
+			//}
+
+			// Update left (site++)
+			if (site == 0) {
+				lt.M(start_ind) = W_[0][newconf[sorted_ind[0]]];
+			}
+			else {
+				lt.M(start_ind + 2 * site) = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][newconf[sorted_ind[0]]];
+			}
+
+			//InfoMessage() << "Lookup check1" << std::endl;
+
+			for (std::size_t k = 1; k < nchange; k++) {
+				for (site = tochange[sorted_ind[k - 1]] + 1; site < tochange[sorted_ind[k]]; site++) {
+					lt.M(start_ind + 2 * site) = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][v[site]];
+				}
+				site = tochange[sorted_ind[k]];
+				lt.M(start_ind + 2 * site) = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][newconf[sorted_ind[k]]];
+			}
+
+			//InfoMessage() << "Lookup check2" << std::endl;
+
+			for (site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
+				lt.M(start_ind + 2 * site) = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][v[site]];
+			}
+
+			//InfoMessage() << "Lookup update left completed" << std::endl;
+
+			// Update right (site--)
+			site = tochange[sorted_ind[nchange - 1]];
+			if (site == N_ - 1) {
+				lt.M(start_ind + 1) = W_[(N_ - 1) % symperiod_][newconf[sorted_ind[nchange - 1]]];
+			}
+			else {
+				lt.M(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][newconf[sorted_ind[nchange - 1]]] * lt.M(start_ind + 2 * (N_ - site) - 3);
+			}
+
+			//InfoMessage() << "First right assigned" << std::endl;
+
+			for (int k = nchange - 2; k >= 0; k--) {
+				for (site = tochange[sorted_ind[k + 1]] - 1; site > tochange[sorted_ind[k]]; site--) {
+					lt.M(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][v[site]] * lt.M(start_ind + 2 * (N_ - site) - 3);
+				}
+				site = tochange[sorted_ind[k]];
+				lt.M(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][newconf[sorted_ind[k]]] * lt.M(start_ind + 2 * (N_ - site) - 3);
+			}
+
+			//InfoMessage() << "Middle loops done" << std::endl;
+
+			for (site = tochange[sorted_ind[0]] - 1; site >= 0; site--) {
+				lt.M(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][v[site]] * lt.M(start_ind + 2 * (N_ - site) - 3);
+			}
+
+			//InfoMessage() << "Lookup update ended" << std::endl;
 		};
 
 		T FullProduct(const std::vector<int> &v) {
