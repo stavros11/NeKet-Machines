@@ -17,3 +17,4 @@ All tested only in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM 
 - Use of lookups in the derivative (is this possible?). Currently we do the contractions from scratch in the `DerLog` functions.
 - Special case of diagonal SBS.
 - Setting for ordering of spins and how to put the strings into graph. Possible connection to graph object. Currently SBS cover the whole graph by default.
+- Setting for different dimensions in open MPS and different string lengths and bond dimensions in SBS. Code supports that but currently it is not controlled by user.
