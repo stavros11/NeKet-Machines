@@ -3,6 +3,7 @@
 - Periodic MPS.
 - Translation invariant periodic MPS with arbitrary symmetry period.
 - General SBS without lookups.
+
 All tested only in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does not converge either.
 
 ### Implemented but not working
