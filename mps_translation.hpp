@@ -364,7 +364,7 @@ namespace netket {
 		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
 			const std::vector<double> &newconf,
 			const LookupType &lt) override {
-			// Assumes that vector toflip is in ascending order
+
 			const std::size_t nflip = toflip.size();
 			if (nflip <= 0) {
 				return T(0, 0);
