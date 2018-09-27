@@ -144,7 +144,6 @@ namespace netket {
 
 		int Nvisible() const override { return N_; };
 
-		// Check lookups later
 		void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
 			int site;
 
