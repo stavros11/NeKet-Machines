@@ -82,12 +82,12 @@ namespace netket {
 				InfoMessage() << "Periodic MPS machine with " << N_ << " sites created" << std::endl;
 				InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << D_ << std::endl;
 				InfoMessage() << "Translation invariance is used. Number of variational parameters is " << npar_ << " instead of " << npar_ * N_ / symperiod_ << std::endl;
-			}
-			
-			// Initialize map from Hilbert space states to MPS indices
-			auto localstates = hilbert_.LocalStates();
-			for (int i = 0; i < d_; i++) {
-				confindex_[localstates[i]] = i;
+
+				// Initialize map from Hilbert space states to MPS indices
+				auto localstates = hilbert_.LocalStates();
+				for (int i = 0; i < d_; i++) {
+					confindex_[localstates[i]] = i;
+				}
 			}
 		};
 
@@ -303,6 +303,15 @@ namespace netket {
 			}
 			return c;
 		};
+		//Auxiliary function that calculates contractions from site1 to site2
+		inline MatrixType mps_contraction(const std::vector<int> &v,
+			const int &site1, const int &site2) {
+			MatrixType c = MatrixType::Identity(D_, D_);
+			for (int site = site1; site < site2; site++) {
+				c *= W_[site % symperiod_][v[site]];
+			}
+			return c;
+		};
 
 		T LogVal(const Eigen::VectorXd &v) override {
 			//InfoMessage() << "LogVal called" << std::endl;
@@ -369,12 +378,6 @@ namespace netket {
 		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
 			const std::vector<double> &newconf,
 			const LookupType &lt) override {
-			return LogValDiff(v, toflip, newconf, lt, 0);
-		};
-
-		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
-			const std::vector<double> &newconf,
-			const LookupType &lt, const int &start_ind) {
 
 			const std::size_t nflip = toflip.size();
 			if (nflip <= 0) {
@@ -393,7 +396,7 @@ namespace netket {
 				new_prod = W_[0][confindex_[newconf[sorted_ind[0]]]];
 			}
 			else {
-				new_prod = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][confindex_[newconf[sorted_ind[0]]]];
+				new_prod = lt.M(2 * (site - 1)) * W_[site % symperiod_][confindex_[newconf[sorted_ind[0]]]];
 			}
 
 			for (std::size_t k = 1; k < nflip; k++) {
@@ -401,44 +404,81 @@ namespace netket {
 				new_prod *= mps_contraction(v, toflip[sorted_ind[k - 1]] + 1, site) * W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]];
 			}
 
-			site = toflip[sorted_ind[nflip - 1]];
-			if (site < N_ - 1) {
-				new_prod *= lt.M(start_ind + 2 * (N_ - site) - 3);
-			}
-
 			//InfoMessage() << "LogValDiff lookup ended" << std::endl;
 
-			return std::log(new_prod.trace() / lt.M(start_ind + 2 * N_ - 2).trace());
+			site = toflip[sorted_ind[nflip - 1]];
+			if (site < N_ - 1) {
+				new_prod *= lt.M(2 * (N_ - site) - 3);
+			}
+
+			return std::log(new_prod.trace() / lt.M(2 * N_ - 2).trace());
 		};
 
-		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
-			const std::vector<double> &newconf) {
+		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
+			const std::vector<int> &newconf,
+			const LookupType &lt, const int &start_ind) {
+
 			const std::size_t nflip = toflip.size();
 			if (nflip <= 0) {
 				return T(0, 0);
 			}
 
-			//InfoMessage() << "LogValDiff lookup called" << std::endl;
-
 			std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
 			MatrixType new_prods(D_, D_);
+			int site = toflip[sorted_ind[0]];
 
-			if (toflip[0] == 0) {
-				new_prods = W_[confindex_[newconf[sorted_ind[0]]]];
+			if (site == 0) {
+				new_prods = W_[0][newconf[sorted_ind[0]]];
 			}
 			else {
-				new_prods = mps_contraction(v, 0, toflip[sorted_ind[0]]) * W_[toflip[sorted_ind[0]] % symperiod_][confindex_[newconf[sorted_ind[0]]]];
+				new_prods = lt.M(startind + 2 * (site - 1)) * W_[site % symperiod_][newconf[sorted_ind[0]]];
+			}
+
+			for (std::size_t i = 1; i < nflip; i++) {
+				site = toflip[sorted_ind[i]];
+				new_prods *= mps_contraction(v, toflip[sorted_ind[i - 1]] + 1, site) * W_[site % symperiod_][newconf[sorted_ind[i]]];
+			}
+
+			site = toflip[sorted_ind[nflip - 1]];
+			if (site < N_ - 1) {
+				//new_prods *= mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_);
+				new_prods *= lt.M(startind + 2 * (N_ - site) - 3);
+			}
+
+			//InfoMessage() << "LogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
+
+			return std::log(new_prods.trace() / lt.M(startind + 2 * N_ - 2).trace());
+		};
+
+		// No (k and lookup)-dependent version for SBS use
+		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
+			const std::vector<int> &newconf) {
+			const std::size_t nflip = toflip.size();
+			if (nflip <= 0) {
+				return T(0, 0);
+			}
+
+			std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
+			StateType current_psi = mps_contraction(v, 0, N_).trace();
+			MatrixType new_prods(D_, D_);
+
+			if (toflip[sorted_ind[0]] == 0) {
+				new_prods = W_[0][newconf[sorted_ind[0]]];
+			}
+			else {
+				new_prods = mps_contraction(v, 0, toflip[sorted_ind[0]]) * W_[toflip[sorted_ind[0]] % symperiod_][newconf[sorted_ind[0]]];
 			}
 			for (std::size_t i = 1; i < nflip; i++) {
-				new_prods *= mps_contraction(v, toflip[sorted_ind[i-1]] + 1, toflip[sorted_ind[i]]) * W_[toflip[sorted_ind[i]] % symperiod_][confindex_[newconf[sorted_ind[i]]]];
+				//InfoMessage() << "toflip = " << toflip[i] << std::endl;
+				new_prods *= mps_contraction(v, toflip[sorted_ind[i - 1]] + 1, toflip[sorted_ind[i]]) * W_[toflip[sorted_ind[i]] % symperiod_][newconf[sorted_ind[i]]];
 			}
-			if (toflip[nflip - 1] < N_ - 1) {
+			if (toflip[sorted_ind[nflip - 1]] < N_ - 1) {
 				new_prods *= mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_);
 			}
 
-			//InfoMessage() << "LogValDiff lookup called" << std::endl;
+			//InfoMessage() << "LogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
 
-			return std::log(new_prods.trace() / mps_contraction(v, 0, N_).trace());
+			return std::log(new_prods.trace() / current_psi);
 		};
 
 		// Derivative with full calculation
