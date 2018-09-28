@@ -193,6 +193,33 @@ namespace netket {
 			}
 		};
 
+		// For SBS use
+		void InitLookup(const std::vector<int> &v, LookupType &lt, const int &start_ind) {
+			int site;
+
+			// We need 2 * L matrix lookups for each string, where L is the string's length
+			// other than that lookups work exactly as in the MPS case
+
+			// First (left) site
+			_InitLookup_check(lt, start_ind);
+			lt.M(start_ind) = W_[0][v[0]];
+
+			// Last (right) site
+			_InitLookup_check(lt, start_ind + 1);
+			lt.M(start_ind + 1) = W_[(N_ - 1) % symperiod_][v[N_ - 1]];
+
+			// Rest sites
+			for (int i = 2; i < 2 * N_; i += 2) {
+				_InitLookup_check(lt, start_ind + i);
+				site = i / 2;
+				lt.M(start_ind + i) = lt.M(start_ind + i - 2) * W_[(site % symperiod_)][v[site]];
+
+				_InitLookup_check(lt, start_ind + i + 1);
+				site = N_ - 1 - site;
+				lt.M(start_ind + i + 1) = W_[site % symperiod_][v[site]] * lt.M(start_ind + i - 1);
+			}
+		};
+
 		// Auxiliary function
 		inline void _InitLookup_check(LookupType &lt, int i) {
 			if (lt.MatrixSize() == i) {
@@ -294,6 +321,79 @@ namespace netket {
 			//InfoMessage() << "Lookup update ended" << std::endl;
 		};
 
+		// For SBS use
+		void UpdateLookup(const std::vector<int> &v,
+			const std::vector<int> &tochange,
+			const std::vector<int> &newconf,
+			LookupType &lt,
+			const int &start_ind) {
+
+			std::size_t nchange = tochange.size();
+			if (nchange <= 0) {
+				return;
+			}
+			std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
+			int site = tochange[sorted_ind[0]];
+
+			//InfoMessage() << "Lookup update called" << std::endl;
+			//for (std::size_t k = 0; k < nchange; k++) {
+			//	InfoMessage() << tochange[sorted_ind[k]] << " , " << newconf[sorted_ind[k]] << std::endl;
+			//}
+
+			// Update left (site++)
+			if (site == 0) {
+				lt.M(start_ind) = W_[0][newconf[sorted_ind[0]]];
+			}
+			else {
+				lt.M(start_ind + 2 * site) = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][newconf[sorted_ind[0]]];
+			}
+
+			//InfoMessage() << "Lookup check1" << std::endl;
+
+			for (std::size_t k = 1; k < nchange; k++) {
+				for (site = tochange[sorted_ind[k - 1]] + 1; site < tochange[sorted_ind[k]]; site++) {
+					lt.M(start_ind + 2 * site) = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][v[site]];
+				}
+				site = tochange[sorted_ind[k]];
+				lt.M(start_ind + 2 * site) = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][newconf[sorted_ind[k]]];
+			}
+
+			//InfoMessage() << "Lookup check2" << std::endl;
+
+			for (site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
+				lt.M(start_ind + 2 * site) = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][v[site]];
+			}
+
+			//InfoMessage() << "Lookup update left completed" << std::endl;
+
+			// Update right (site--)
+			site = tochange[sorted_ind[nchange - 1]];
+			if (site == N_ - 1) {
+				lt.M(start_ind + 1) = W_[(N_ - 1) % symperiod_][newconf[sorted_ind[nchange - 1]]];
+			}
+			else {
+				lt.M(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][newconf[sorted_ind[nchange - 1]]] * lt.M(start_ind + 2 * (N_ - site) - 3);
+			}
+
+			//InfoMessage() << "First right assigned" << std::endl;
+
+			for (int k = nchange - 2; k >= 0; k--) {
+				for (site = tochange[sorted_ind[k + 1]] - 1; site > tochange[sorted_ind[k]]; site--) {
+					lt.M(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][v[site]] * lt.M(start_ind + 2 * (N_ - site) - 3);
+				}
+				site = tochange[sorted_ind[k]];
+				lt.M(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][newconf[sorted_ind[k]]] * lt.M(start_ind + 2 * (N_ - site) - 3);
+			}
+
+			//InfoMessage() << "Middle loops done" << std::endl;
+
+			for (site = tochange[sorted_ind[0]] - 1; site >= 0; site--) {
+				lt.M(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][v[site]] * lt.M(start_ind + 2 * (N_ - site) - 3);
+			}
+
+			//InfoMessage() << "Lookup update ended" << std::endl;
+		};
+
 		//Auxiliary function that calculates contractions from site1 to site2
 		inline MatrixType mps_contraction(const Eigen::VectorXd &v,
 			const int &site1, const int &site2) {
@@ -314,6 +414,12 @@ namespace netket {
 		};
 
 		T LogVal(const Eigen::VectorXd &v) override {
+			//InfoMessage() << "LogVal called" << std::endl;
+			return std::log(mps_contraction(v, 0, N_).trace());
+		};
+
+		// For SBS use
+		T LogVal(const std::vector<int> &v) {
 			//InfoMessage() << "LogVal called" << std::endl;
 			return std::log(mps_contraction(v, 0, N_).trace());
 		};
@@ -431,7 +537,7 @@ namespace netket {
 				new_prods = W_[0][newconf[sorted_ind[0]]];
 			}
 			else {
-				new_prods = lt.M(startind + 2 * (site - 1)) * W_[site % symperiod_][newconf[sorted_ind[0]]];
+				new_prods = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][newconf[sorted_ind[0]]];
 			}
 
 			for (std::size_t i = 1; i < nflip; i++) {
@@ -442,12 +548,12 @@ namespace netket {
 			site = toflip[sorted_ind[nflip - 1]];
 			if (site < N_ - 1) {
 				//new_prods *= mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_);
-				new_prods *= lt.M(startind + 2 * (N_ - site) - 3);
+				new_prods *= lt.M(start_ind + 2 * (N_ - site) - 3);
 			}
 
 			//InfoMessage() << "LogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
 
-			return std::log(new_prods.trace() / lt.M(startind + 2 * N_ - 2).trace());
+			return std::log(new_prods.trace() / lt.M(start_ind + 2 * N_ - 2).trace());
 		};
 
 		// No (k and lookup)-dependent version for SBS use
@@ -506,6 +612,37 @@ namespace netket {
 				der.segment((d_ * (site % symperiod_) + confindex_[v(site)])* Dsq, Dsq) += Eigen::Map<VectorType>((temp_product).transpose().data(), Dsq);
 			}
 			der.segment((d_ * ((N_ - 1) % symperiod_) + confindex_[v(N_ - 1)])* Dsq, Dsq) += Eigen::Map<VectorType>((left_prods[N_ - 2]).transpose().data(), Dsq);
+
+			//InfoMessage() << "Derivative ended" << std::endl;
+
+			return der / left_prods[N_ - 1].trace();
+		};
+
+		// For SBS use
+		VectorType DerLog(const std::vector<int> &v) {
+			const int Dsq = D_ * D_;
+			//ComputeVtilde(v, vtilde_);
+			MatrixType temp_product(D_, D_);
+			std::vector<MatrixType> left_prods, right_prods;
+			VectorType der = VectorType::Zero(npar_);
+
+			//InfoMessage() << "Derivative called" << std::endl;
+			// Calculate products
+			left_prods.push_back(W_[0][v[0]]);
+			right_prods.push_back(W_[(N_ - 1) % symperiod_][v[N_ - 1]]);
+			for (int site = 1; site < N_ - 1; site++) {
+				left_prods.push_back(left_prods[site - 1] * W_[site][v[site]]);
+				right_prods.push_back(W_[(N_ - 1 - site) % symperiod_][v[N_ - 1 - site]] * right_prods[site - 1]);
+			}
+			left_prods.push_back(left_prods[N_ - 2] * W_[(N_ - 1) % symperiod_][v[N_ - 1]]);
+			right_prods.push_back(W_[0][v[0]] * right_prods[N_ - 2]);
+
+			der.segment(v[0] * Dsq, Dsq) += Eigen::Map<VectorType>((right_prods[N_ - 2]).transpose().data(), Dsq);
+			for (int site = 1; site < N_ - 1; site++) {
+				temp_product = right_prods[N_ - site - 2] * left_prods[site - 1];
+				der.segment((d_ * (site % symperiod_) + v[site])*Dsq, Dsq) += Eigen::Map<VectorType>((temp_product).transpose().data(), Dsq);
+			}
+			der.segment((d_ * ((N_ - 1) % symperiod_) + v[N_ - 1])*Dsq, Dsq) += Eigen::Map<VectorType>((left_prods[N_ - 2]).transpose().data(), Dsq);
 
 			//InfoMessage() << "Derivative ended" << std::endl;
 
