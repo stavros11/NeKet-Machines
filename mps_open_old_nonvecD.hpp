@@ -32,17 +32,10 @@ namespace netket {
 		int N_;
 		// Physical dimension
 		int d_;
-		// Bond dimension (stored in vector of size N_ + 1)
-		std::vector<int> D_;
-		//Bond dimension given by user
-		int Duser_;
+		// Bond dimension
+		int D_;
 		// Number of variational parameters
 		int npar_;
-
-		// Use canonical form normalization
-		bool canonicalform_;
-		// Boundary dimension (Db = d if canonical form is used, Db = D otherwise)
-		//int Db_;
 
 		// MPS Matrices (stored as [N * d, D, D]
 		std::vector<MatrixType> W_;
@@ -69,24 +62,19 @@ namespace netket {
 
 		// Auxiliary function that defines the matrices
 		void Init() {
-			if (canonicalform_) {
-				D_[1] = d_;
-				D_[N_ - 1] = d_;
-			}
+			MatrixType left = MatrixType::Zero(1, D_), middle = MatrixType::Zero(D_, D_), right = MatrixType::Zero(D_, 1);
+			npar_ = (N_ - 2) * d_ * D_ * D_ + 2 * d_ * D_;
 
-			npar_ = 0;
-			for (int i = 0; i < N_; i++) {
-				npar_ += D_[i] * D_[i + 1];
+			W_.push_back(left);
+			for (int i = 0; i < N_*d_; i++) {
+				W_.push_back(middle);
 			}
-			npar_ *= d_;
+			W_.push_back(right);
 
 			// Machine creation messages
 			InfoMessage() << "Open MPS machine with " << N_ << " sites created" << std::endl;
-			InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << Duser_ << std::endl;
+			InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << D_ << std::endl;
 			InfoMessage() << "The number of variational parameters is " << npar_ << std::endl;
-			if (canonicalform_) {
-				InfoMessage() << "MPS used in canonical form" << std::endl;
-			}
 
 			// Initialize map from Hilbert space states to MPS indices
 			auto localstates = hilbert_.LocalStates();
@@ -106,118 +94,95 @@ namespace netket {
 			int k = 0;
 			VectorType pars(npar_);
 
-			for (int site = 0; site < N_; site++) {
-				for (int spin = 0; spin < d_; spin++) {
-					for (int i = 0; i < D_[site]; i++) {
-						for (int j = 0; j < D_[site + 1]; j++) {
-							pars(k) = W_[site * d_ + spin](i, j);
-							k++;
-						}
+			// Left boundary
+			for (int p = 0; p < d_; p++) {
+				for (int j = 0; j < D_; j++) {
+					pars(k) = W_[p](0, j);
+					k++;
+				}
+			}
+
+			// Middle
+			for (int p = d_; p < (N_ - 1)*d_; p++) {
+				for (int i = 0; i < D_; i++) {
+					for (int j = 0; j < D_; j++) {
+						pars(k) = W_[p](i, j);
+						k++;
 					}
 				}
 			}
+
+			// Right boundary
+			for (int p = (N_ - 1)*d_; p < N_ * d_; p++) {
+				for (int i = 0; i < D_; i++) {
+					pars(k) = W_[p](i, 0);
+					k++;
+				}
+			}
+
 			return pars;
 		};
 
 		void SetParameters(const VectorType &pars) override {
 			int k = 0;
 
-			for (int site = 0; site < N_; site++) {
-				for (int spin = 0; spin < d_; spin++) {
-					for (int i = 0; i < D_[site]; i++) {
-						for (int j = 0; j < D_[site + 1]; j++) {
-							W_[site * d_ + spin](i, j) = pars(k);
-							k++;
-						}
+			// Left boundary
+			for (int p = 0; p < d_; p++) {
+				for (int j = 0; j < D_; j++) {
+					W_[p](0, j) = pars(k);
+					k++;
+				}
+			}
+
+			// Middle
+			for (int p = d_; p < (N_ - 1)*d_; p++) {
+				for (int i = 0; i < D_; i++) {
+					for (int j = 0; j < D_; j++) {
+						W_[p](i, j) = pars(k);
+						k++;
 					}
 				}
 			}
-			// Normalize to canonical form
-			if (canonicalform_) {
-				normalize2canonical();
+
+			// Right boundary
+			for (int p = (N_ - 1)*d_; p < N_ * d_; p++) {
+				for (int i = 0; i < D_; i++) {
+					W_[p](i, 0) = pars(k);
+					k++;
+				}
 			}
 		};
-
-		// #################################### //
-		// ### Functions for canonical form ### //
-		// #################################### //
-		void normalize2canonical() {
-			MatrixType SdotV;
-            Eigen::JacobiSVD<MatrixType> svd;
-			double last_norm=0.0;
-
-			// Do SVD for site 0
-            svd = JSVD(list2matLeft());
-			// Update W for site 0
-			mat2list(0, svd.matrixU());
-            
-			// Repeat for the rest sites
-			for (int site=1; site<N_-1; site++) {
-				SdotV = svd.singularValues().asDiagonal() * svd.matrixV().adjoint();
-				svd = JSVD(list2mat(site, SdotV));
-				mat2list(site, svd.matrixU());
-			}
-			
-			// Normalize final state
-			SdotV = svd.singularValues().asDiagonal() * svd.matrixV().adjoint();
-			for (int i=d_*(N_ -1); i<d_*N_; i++) {
-				W_[i] = SdotV * W_[i];
-				last_norm += std::real((W_[i].conjugate().cwiseProduct(W_[i]).sum()));
-			}
-			for (int i=d_*(N_ -1); i<d_*N_; i++) {
-				W_[i] *= 1.0 / std::sqrt(last_norm);
-			}
-		};
-
-        inline Eigen::JacobiSVD<MatrixType> JSVD(const MatrixType x) {
-            using namespace Eigen;
-            JacobiSVD<MatrixType> svd(x, ComputeThinU | ComputeThinV);
-            return svd;
-        };
-
-		inline MatrixType list2matLeft() {
-			MatrixType mat(d_ * D_[0], D_[1]);
-			for (int i=0; i<d_; i++) {
-				mat.block(i * D_[0], 0, D_[0], D_[1]) = W_[i];
-			}
-			return mat;
-		};
-
-		inline MatrixType list2mat(const int site, const MatrixType SdotV) {
-			MatrixType mat(d_ * D_[site], D_[site+1]);
-			for (int i=0; i<d_; i++) {
-				mat.block(i * D_[site], 0, D_[site], D_[site+1]) = SdotV * W_[site * d_ + i];
-			}
-			return mat;
-		};
-
-		inline void mat2list(const int site, const MatrixType mat) {
-			for (int i=0; i<d_; i++) {
-				W_[site * d_ + i] = mat.block(i * D_[site], 0, D_[site], D_[site+1]);
-			}
-		};
-		// ############################################ //
-		// ### End of functions for canonical form ### //
-		// ########################################## //
 
 		// Auxiliary function used for setting initial random parameters and adding identities in every matrix
 		inline void SetParametersIdentity(const VectorType &pars) {
 			int k = 0;
 
-			for (int site = 0; site < N_; site++) {
-				for (int spin = 0; spin < d_; spin++) {
-					for (int i = 0; i < D_[site]; i++) {
-						for (int j = 0; j < D_[site + 1]; j++) {
-							W_[site * d_ + spin](i, j) = pars(k);
-							if (i == j) {
-								W_[site * d_ + spin](i, j) += T(1, 0);
-							}
-							if (site == 0 or site == N_ - 1) {
-								W_[site * d_ + spin](i, j) += T(1, 0);
-							}
-							k++;
+			// Left boundary
+			for (int p = 0; p < d_; p++) {
+				for (int j = 0; j < D_; j++) {
+					W_[p](0, j) = pars(k) + T(1, 0);
+					k++;
+				}
+			}
+
+			// Middle
+			for (int p = d_; p < (N_ - 1)*d_; p++) {
+				for (int i = 0; i < D_; i++) {
+					for (int j = 0; j < D_; j++) {
+						W_[p](i, j) = pars(k);
+						if (i == j) {
+							W_[p](i, j) += T(1, 0);
 						}
+						k++;
 					}
+				}
+			}
+
+			// Right boundary
+			for (int p = (N_ - 1)*d_; p < N_ * d_; p++) {
+				for (int i = 0; i < D_; i++) {
+					W_[p](i, 0) = pars(k) + T(1, 0);
+					k++;
 				}
 			}
 		};
@@ -226,12 +191,7 @@ namespace netket {
 			VectorType pars(npar_);
 
 			netket::RandomGaussian(pars, seed, sigma);
-			if (canonicalform_) {
-				SetParameters(pars);
-			}
-			else {
-				SetParametersIdentity(pars);
-			}
+			SetParametersIdentity(pars);
 		};
 
 		int Nvisible() const override { return N_; };
@@ -277,30 +237,30 @@ namespace netket {
 		// Auxiliary function
 		inline void _InitLookupLeft_check(LookupType &lt, int i) {
 			if (lt.MatrixSize() == i) {
-				lt.AddMatrix(D_[0], D_[i+1]);
+				lt.AddMatrix(1, D_);
 			}
 			else {
-				lt.M(i).resize(D_[0], D[i+1]);
+				lt.M(i).resize(1, D_);
 			}
 		};
 
 		// Auxiliary function
 		inline void _InitLookupRight_check(LookupType &lt, int i) {
 			if (lt.MatrixSize() == i) {
-				lt.AddMatrix(D_[i+1], D_[N_]);
+				lt.AddMatrix(D_, 1);
 			}
 			else {
-				lt.M(i).resize(D_[i + 1], D_[N_]);
+				lt.M(i).resize(D_, 1);
 			}
 		};
 
 		// Auxiliary function (the last lookups are just numbers - shape=(1,1))
 		inline void _InitLookupBoundary_check(LookupType &lt, int i) {
 			if (lt.MatrixSize() == i) {
-				lt.AddMatrix(D_[0], D_[N_]);
+				lt.AddMatrix(1, 1);
 			}
 			else {
-				lt.M(i).resize(D_[0], D_[N_]);
+				lt.M(i).resize(1, 1);
 			}
 		};
 
@@ -427,7 +387,7 @@ namespace netket {
 			std::vector<std::size_t> sorted_ind;
 			VectorType logvaldiffs=VectorType::Zero(nconn);
 			StateType current_psi = mps_contractionLeft(v, N_).trace();
-			MatrixType new_prods;
+			MatrixType new_prods(1, D_);
 
 			//InfoMessage() << "LogValDiff full called" << std::endl;
 
@@ -467,7 +427,7 @@ namespace netket {
 		//Auxiliary function that calculates contractions from site1 to site2
 		inline MatrixType mps_contraction(const Eigen::VectorXd &v,
 			const int &site1, const int &site2) {
-			MatrixType c = MatrixType::Identity(D_[site1], D_[site1]);
+			MatrixType c = MatrixType::Identity(D_, D_);
 			for (int site = site1; site < site2; site++) {
 				c *= W_[d_ * site + confindex_[v(site)]];
 			}
@@ -567,8 +527,8 @@ namespace netket {
 
 		// Derivative with full calculation
 		VectorType DerLog(const Eigen::VectorXd &v) override {
+			const int Dsq = D_ * D_;
 			//ComputeVtilde(v, vtilde_);
-			int Dsq;
 			std::vector<MatrixType> left_prods, right_prods;
 			VectorType der = VectorType::Zero(npar_);
 
@@ -590,15 +550,14 @@ namespace netket {
 
 			//InfoMessage() << "Products calculated" << std::endl;
 
-			der.segment(confindex_[v(0)] * D_[1], D_[1]) = Eigen::Map<VectorType>((right_prods[N_ - 2]).data(), D_[1]);
+			der.segment(confindex_[v(0)] * D_, D_) = Eigen::Map<VectorType>((right_prods[N_ - 2]).data(), D_);
 			//InfoMessage() << "Left derivative assigned" << std::endl;
 			for (int site = 1; site < N_ - 1; site++) {
-				Dsq = D_[site] * D_[site + 1];
-				der.segment(d_ * D_[1] + ((site-1) * d_ + confindex_[v(site)]) * Dsq, Dsq) = middle_tensor_product(left_prods[site - 1], right_prods[N_ - site - 2]);
+				der.segment(d_ * D_ + ((site-1) * d_ + confindex_[v(site)])* Dsq, Dsq) = middle_tensor_product(left_prods[site - 1], right_prods[N_ - site - 2]);
 
 				//InfoMessage() << "site = " << site << std::endl;
 			}
-			der.segment(npar_ + (confindex_[v(N_ - 1)] - d_) * D_[N_ - 1], D_[N_ - 1]) = Eigen::Map<VectorType>((left_prods[N_ - 2]).data(), D_[N_ - 1]);
+			der.segment(d_ * D_ + (N_ - 2) * d_ * Dsq + confindex_[v(N_ - 1)]* D_, D_) = Eigen::Map<VectorType>((left_prods[N_ - 2]).data(), D_);
 
 			//InfoMessage() << "Derivative ended" << std::endl;
 			//der = der / left_prods[N_ - 1].trace();
@@ -607,11 +566,10 @@ namespace netket {
 		};
 
 		inline VectorType middle_tensor_product(const MatrixType left, const MatrixType right) {
-			int Dl = left.size(), Dr = right.size();
-			VectorType der_seg = VectorType::Zero(Dl * Dr);
+			VectorType der_seg = VectorType::Zero(D_ * D_);
 			int k = 0;
-			for (int i = 0; i < Dl; i++) {
-				for (int j = 0; j < Dr; j++) {
+			for (int i = 0; i < D_; i++) {
+				for (int j = 0; j < D_; j++) {
 					der_seg(k) = left(0, i) * right(j, 0);
 					k++;
 				}
@@ -625,9 +583,8 @@ namespace netket {
 		void to_json(json &j) const override {
 		  j["Machine"]["Name"] = "MPSopen";
 		  j["Machine"]["Nspins"] = N_;
-		  j["Machine"]["BondDim"] = Duser_;
+		  j["Machine"]["BondDim"] = D_;
 		  j["Machine"]["PhysDim"] = d_;
-		  j["Machine"]["CanonicalForm"] = canonicalform_;
 		  j["Machine"]["W"] = W_;
 		}; 
 
@@ -651,23 +608,10 @@ namespace netket {
 		  }
 
 		  if (FieldExists(pars["Machine"], "BondDim")) {
-			Duser_ = pars["Machine"]["BondDim"];
-			// Initialize bond dimension vector
-			D_[0] = 1;
-			for (int i = 1; i < N_; i++) {
-				D_[i] = Duser_;
-			}
-			D_[N_] = 1;
+			D_ = pars["Machine"]["BondDim"];
 		  }
 		  else {
 			  throw InvalidInputError("Unspecified bond dimension");
-		  }
-
-		  if (FieldExists(pars["Machine"], "CanonicalForm")) {
-			  canonicalform_ = pars["Machine"]["CanonicalForm"];
-		  }
-		  else {
-			  canonicalform_ = false;
 		  }
 
 		  Init();
