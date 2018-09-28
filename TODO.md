@@ -2,12 +2,11 @@
 - Open MPS, versions with constant and vector D.
 - Periodic MPS.
 - Translation invariant periodic MPS with arbitrary symmetry period.
-- General SBS without lookups.
+- General SBS.
 
 All tested only in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does not converge either.
 
 ### Implemented but not working
-- Lookups in SBS: Works only for the special case M=1 (which is MPS). Possibly small bug.
 - Canonical form in Open MPS (doesn't work in Python either).
 
 ### Additions needed
