@@ -256,33 +256,6 @@ namespace netket {
 			return logvaldiffs;
 		};
 
-		// Ignore lookups for now (copy the previous function)
-		/**
-		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
-			const std::vector<double> &newconf,
-			const LookupType &lt) override {
-
-			//InfoMessage() << "LogValDiff lookup called" << std::endl;
-			
-			std::size_t nflip = toflip.size();
-			if (nflip <= 0) {
-				return T(0, 0);
-			}
-
-			int i;
-			T result = T(0, 0);
-			std::vector<std::map<int, std::vector<int>>> string_lists = tochange4string(toflip, newconf);
-
-			for (auto const &ent : string_lists[0]) {
-				i = ent.first;
-				result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i]);
-			}
-
-			//InfoMessage() << "LogValDiff looukup ended" << std::endl;
-
-			return result;
-		};*/
-
 		T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
 			const std::vector<double> &newconf,
 			const LookupType &lt) override {
@@ -300,13 +273,12 @@ namespace netket {
 
 			for (auto const &ent : string_lists[0]) {
 				i = ent.first;
-				//if (string_lists[0][i].size() > 1) {
-				//	result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
-				//}
-				//else if (string_lists[0][i].size() > 0) {
-				//	result += strings_[i].FastLogValDiff(string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
-				//}
-				result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				if (string_lists[0][i].size() > 1) {
+					result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				}
+				else if (string_lists[0][i].size() > 0) {
+					result += strings_[i].FastLogValDiff(string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				}
 			}
 
 			//InfoMessage() << "LogValDiff looukup ended" << std::endl;
