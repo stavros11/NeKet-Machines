@@ -151,7 +151,7 @@ namespace netket {
 
 				_InitLookup_check(lt, start_ind + i + 1);
 				site = N_ - 1 - site;
-				lt.M(start_ind + i + 1) = W_[site % symperiod_][v[site]] * lt.M(i - 1);
+				lt.M(start_ind + i + 1) = W_[site % symperiod_][v[site]] * lt.M(start_ind + i - 1);
 			}
 		};
 
@@ -293,7 +293,7 @@ namespace netket {
 				//InfoMessage() << "toflip = " << toflip[i] << std::endl;
 				new_prods *= mps_contraction(v, toflip[sorted_ind[i - 1]] + 1, toflip[sorted_ind[i]]) * W_[toflip[sorted_ind[i]] % symperiod_][newconf[sorted_ind[i]]];
 			}
-			if (toflip[nflip - 1] < N_ - 1) {
+			if (toflip[sorted_ind[nflip - 1]] < N_ - 1) {
 				new_prods *= mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_);
 			}
 
@@ -310,36 +310,33 @@ namespace netket {
 			if (nflip <= 0) {
 				return T(0, 0);
 			}
-			MatrixType new_prod;
+
 			std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
+			MatrixType new_prods(D_, D_);
 			int site = toflip[sorted_ind[0]];
 
-			//InfoMessage() << "LogValDiff lookup called" << std::endl;
-			//for (std::size_t k = 0; k < nflip; k++) {
-			//	InfoMessage() << toflip[k] << std::endl;
-			//}
-
 			if (site == 0) {
-				new_prod = W_[0][newconf[sorted_ind[0]]];
+				new_prods = W_[0][newconf[sorted_ind[0]]];
 			}
 			else {
-				new_prod = lt.M(startind + 2 * (site - 1)) * W_[site % symperiod_][newconf[sorted_ind[0]]];
+				new_prods = lt.M(startind + 2 * (site - 1)) * W_[site % symperiod_][newconf[sorted_ind[0]]];
 			}
 
-			for (std::size_t k = 1; k < nflip; k++) {
-				site = toflip[sorted_ind[k]];
-				new_prod *= mps_contraction(v, toflip[sorted_ind[k - 1]] + 1, site) * W_[site % symperiod_][newconf[sorted_ind[k]]];
+			for (std::size_t i = 1; i < nflip; i++) {
+				site = toflip[sorted_ind[i]];
+				new_prods *= mps_contraction(v, toflip[sorted_ind[i - 1]] + 1, site) * W_[site % symperiod_][newconf[sorted_ind[i]]];
 			}
-
-			//InfoMessage() << "LogValDiff lookup ended" << std::endl;
 
 			site = toflip[sorted_ind[nflip - 1]];
-			if (site == N_ - 1) {
-				return std::log(new_prod.trace() / lt.M(startind + 2 * N_ - 2).trace());
+			if (site < N_ - 1) {
+				//new_prods *= mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_);
+				new_prods *= lt.M(startind + 2 * (N_ - site) - 3);
 			}
-			else {
-				return std::log((new_prod * lt.M(startind + 2 * (N_ - site) - 3)).trace() / lt.M(startind + 2 * N_ - 2).trace());
-			}
+
+			//InfoMessage() << "LogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
+
+			return std::log(new_prods.trace() / lt.M(startind + 2 * N_ - 2).trace());
+
 		};
 
 		// Lookup LogValDiff that doesn't require v
