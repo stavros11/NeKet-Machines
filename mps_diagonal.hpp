@@ -17,6 +17,7 @@
 #include <vector>
 #include "Lookup/lookup.hpp"
 #include "Utils/all_utils.hpp"
+#include "abstract_mps.hpp"
 
 #ifndef NETKET_MPS_DIAGONAL_HPP
 #define NETKET_MPS_DIAGONAL_HPP
@@ -24,9 +25,9 @@
 namespace netket {
 
 	template <typename T>
-	class MPSDiagonal : public AbstractMachine<T> {
-		using VectorType = typename AbstractMachine<T>::VectorType;
-		using MatrixType = typename AbstractMachine<T>::MatrixType;
+	class MPSDiagonal : public AbstractMPS<T> {
+		using VectorType = typename AbstractMPS<T>::VectorType;
+		using MatrixType = typename AbstractMPS<T>::MatrixType;
 
 		// Number of sites
 		int N_;
@@ -137,7 +138,7 @@ namespace netket {
 		};
 
 		// Auxiliary function used for setting initial random parameters and adding identities in every matrix
-		inline void SetParametersIdentity(const VectorType &pars) {
+		inline void SetParametersIdentity(const VectorType &pars) override {
 			int k = 0;
 
 			for (int site = 0; site < symperiod_; site++) {
@@ -190,7 +191,7 @@ namespace netket {
 		};
 
 		// For SBS use
-		void InitLookup(const std::vector<int> &v, LookupType &lt, const int &start_ind) {
+		void InitLookup(const std::vector<int> &v, LookupType &lt, const int &start_ind) override {
 			int site;
 
 			// We need 2 * L matrix lookups for each string, where L is the string's length
@@ -322,7 +323,7 @@ namespace netket {
 			const std::vector<int> &tochange,
 			const std::vector<int> &newconf,
 			LookupType &lt,
-			const int &start_ind) {
+			const int &start_ind) override {
 
 			std::size_t nchange = tochange.size();
 			if (nchange <= 0) {
@@ -415,7 +416,7 @@ namespace netket {
 		};
 
 		// For SBS use
-		T LogVal(const std::vector<int> &v) {
+		T LogVal(const std::vector<int> &v) override {
 			//InfoMessage() << "LogVal called" << std::endl;
 			return std::log(mps_contraction(v, 0, N_).sum());
 		};
@@ -424,7 +425,7 @@ namespace netket {
 			return LogVal(lt, 0);
 		};
 
-		inline T LogVal(const LookupType &lt, const int &start_ind) {
+		inline T LogVal(const LookupType &lt, const int &start_ind) override {
 			return std::log(lt.V(start_ind + 2 * N_ - 2).sum());
 		};
 
@@ -553,7 +554,7 @@ namespace netket {
 
 		// No (k and lookup)-dependent version for SBS use
 		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
-			const std::vector<int> &newconf) {
+			const std::vector<int> &newconf) override {
 			const std::size_t nflip = toflip.size();
 			if (nflip <= 0) {
 				return T(0, 0);
@@ -612,7 +613,7 @@ namespace netket {
 		};
 
 		// For SBS use
-		VectorType DerLog(const std::vector<int> &v) {
+		VectorType DerLog(const std::vector<int> &v) override {
 			VectorType temp_product(D_);
 			std::vector<VectorType> left_prods, right_prods;
 			VectorType der = VectorType::Zero(npar_);
