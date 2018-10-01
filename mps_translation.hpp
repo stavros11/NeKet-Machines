@@ -81,8 +81,12 @@ namespace netket {
 			if (show_messages) {
 				InfoMessage() << "Periodic MPS machine with " << N_ << " sites created" << std::endl;
 				InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << D_ << std::endl;
-				InfoMessage() << "Translation invariance is used. Number of variational parameters is " << npar_ << " instead of " << npar_ * N_ / symperiod_ << std::endl;
-
+				if (symperiod_ < N_) {
+					InfoMessage() << "Translation invariance is used. Number of variational parameters is " << npar_ << " instead of " << npar_ * N_ / symperiod_ << std::endl;
+				}
+				else {
+					InfoMessage() << "Number of variational parameters is " << npar_ << std::endl;
+				}
 				// Initialize map from Hilbert space states to MPS indices
 				auto localstates = hilbert_.LocalStates();
 				for (int i = 0; i < d_; i++) {
