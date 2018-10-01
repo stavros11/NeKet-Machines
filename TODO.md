@@ -1,10 +1,11 @@
 ### Currently working
-- Open MPS, versions with constant and vector D.
-- Periodic MPS.
-- Translation invariant periodic MPS with arbitrary symmetry period.
-- General SBS. Uses translational MPS as its MPS object.
+- Open MPS, versions with constant (*deprecated*) and vector D (`mps_open.hpp`).
+- Periodic MPS (`mps_periodic.hpp`) - This is special case of `MPSTranslation` with `symperiod_ = N`.
+- Translation invariant periodic MPS with arbitrary symmetry period (`mps_translation.hpp`).
+- Diagonal MPS (`mps_diagonal.hpp`) - Same as `MPSTranslation` but matrices are diagonal and we use `cwiseProduct` instead of matrix product (a bit faster).
+- SBS. Uses `MPSTranslation` or `MPSDiagonal` classes for the MPS calculations.
 
-All tested only in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does not converge either.
+All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does not converge either.
 
 ### Implemented but not working
 - Canonical form in Open MPS (doesn't work in Python either).
