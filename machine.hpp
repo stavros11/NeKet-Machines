@@ -28,6 +28,7 @@
 #include "mps_periodic.hpp"
 #include "mps_open.hpp"
 #include "mps_translation.hpp"
+#include "mps_diagonal.hpp"
 #include "sbs.hpp"
 
 namespace netket {
@@ -87,6 +88,8 @@ class Machine : public AbstractMachine<T> {
 	  m_ = Ptype(new MPSOpen<T>(hilbert, pars));
 	} else if (pars["Machine"]["Name"] == "MPStranslation") {
 		m_ = Ptype(new MPSTranslation<T>(hilbert, pars));
+	} else if (pars["Machine"]["Name"] == "MPSdiagonal") {
+		m_ = Ptype(new MPSDiagonal<T>(hilbert, pars));
 	} else if (pars["Machine"]["Name"] == "SBS") {
 		m_ = Ptype(new SBS<T>(hilbert, pars));
 	}
@@ -138,7 +141,8 @@ class Machine : public AbstractMachine<T> {
 
     std::set<std::string> machines = {"RbmSpin", "RbmSpinSymm", "RbmMultival",
                                       "FFNN", "Jastrow", "JastrowSymm", 
-									   "MPSperiodic", "MPSopen", "MPStranslation", "SBS"};
+									  "MPSperiodic", "MPSopen", "MPStranslation", "MPSdiagonal", 
+									  "SBS"};
 
 
     if (machines.count(name) == 0) {
