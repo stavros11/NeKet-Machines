@@ -502,7 +502,7 @@ namespace netket {
 		  j["Machine"]["Nspins"] = N_;
 		  j["Machine"]["BondDim"] = D_;
 		  j["Machine"]["PhysDim"] = d_;
-		  j["Machine"]["W"] = W_;
+		  //j["Machine"]["W"] = W_;
 		}; 
 
 		void from_json(const json &pars) override {
@@ -534,9 +534,13 @@ namespace netket {
 		  Init();
 
 		  // Loading parameters, if defined in the input
-		 // if (FieldExists(pars["Machine"], "W")) {
-		//	W_ = pars["Machine"]["W"];
-		  //}
+		  if (FieldExists(pars["Machine"], "W")) {
+			  for (int i = 0; i < N_; i++) {
+				  for (int j = 0; j < d_; j++) {
+					  W_[d_ * i + j] = pars["Machine"]["W"][d_ * i + j];
+				  }
+			  }
+		  }
 		};
 
 		// Still to do: 
