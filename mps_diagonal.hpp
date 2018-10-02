@@ -518,7 +518,7 @@ namespace netket {
 
 		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
 			const std::vector<int> &newconf,
-			const LookupType &lt, const int &start_ind) {
+			const LookupType &lt, const int &start_ind) override {
 
 			const std::size_t nflip = toflip.size();
 			if (nflip <= 0) {
