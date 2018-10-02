@@ -12,6 +12,7 @@ All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does 
 - `MPSperiodic` is a special case of `MPSTranslation` with `symperiod_ = N`.
 - SBS uses `MPSTranslation` or `MPSDiagonal` (user selects) for MPS calculations.
 - User can give different bond dimensions for `MPSopen` as a python list of length N+1. If an integer is given it is treated as a constant bond dimension.
+- Loading W option is enabled for all except SBS and W should be given as a list of matrices (untested).
 
 ### Implemented but not working
 - Canonical form in Open MPS (doesn't work in Python either).
@@ -23,7 +24,7 @@ All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does 
 - Setting for ordering of spins and how to put the strings into graph. Possible connection to graph object. Currently SBS cover the whole graph by default.
 
 #### Code related
+- Test weight loading and enable weight saving (incompatibilities with json format)
 - Currently SBS uses MPS classes for calculations, but each MPS function is defined twice in the class, once for pure MPS and once for SBS (incompatibility with `confindex_` calculation). It might be possible to combine some of these functions.
-- Setting to save weights for all cases (it is currently commented).
 - Use of lookups in the derivative (is this possible?). Currently we do the contractions from scratch in the `DerLog` functions.
 - Setting for different string lengths and bond dimensions in SBS. Code supports that but currently it is not controlled by user.
