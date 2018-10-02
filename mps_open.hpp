@@ -32,10 +32,8 @@ namespace netket {
 		int N_;
 		// Physical dimension
 		int d_;
-		// Bond dimension (stored in vector of size N_ + 1)
+		// Bond dimensions (stored in vector of size N_ + 1)
 		std::vector<int> D_;
-		//Bond dimension given by user
-		int Duser_;
 		// Number of variational parameters
 		int npar_;
 
@@ -89,18 +87,18 @@ namespace netket {
 			
 			// Machine creation messages
 			InfoMessage() << "Open MPS machine with " << N_ << " sites created" << std::endl;
-			InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << Duser_ << std::endl;
-			InfoMessage() << "The number of variational parameters is " << npar_ << std::endl;
+			InfoMessage() << "Physical dimension d = " << d_ << " and bond dimensions D = ";
+			for (int i = 0; i < N_ + 1; i++) {
+				std::cout << D_[i] << " ";
+			}
+			std::cout << std::endl;
 			if (canonicalform_) {
 				InfoMessage() << "MPS used in canonical form" << std::endl;
 			}
 			else {
 				InfoMessage() << "Canonical form not used" << std::endl;
 			}
-			for (int i = 0; i < N_ + 1; i++) {
-				InfoMessage() << D_[i];
-			}
-			InfoMessage() << std::endl;
+			InfoMessage() << "The number of variational parameters is " << npar_ << std::endl;
 
 			// Initialize map from Hilbert space states to MPS indices
 			auto localstates = hilbert_.LocalStates();
@@ -654,7 +652,7 @@ namespace netket {
 		void to_json(json &j) const override {
 		  j["Machine"]["Name"] = "MPSopen";
 		  j["Machine"]["Nspins"] = N_;
-		  j["Machine"]["BondDim"] = Duser_;
+		  j["Machine"]["BondDim"] = D_;
 		  j["Machine"]["PhysDim"] = d_;
 		  j["Machine"]["CanonicalForm"] = canonicalform_;
 		  j["Machine"]["W"] = W_;
@@ -680,13 +678,20 @@ namespace netket {
 		  }
 
 		  if (FieldExists(pars["Machine"], "BondDim")) {
-			Duser_ = pars["Machine"]["BondDim"];
-			// Initialize bond dimension vector
-			D_.push_back(1);
-			for (int i = 1; i < N_; i++) {
-				D_.push_back(Duser_);
+			// If given BondDim is a list, copy it to D_ variable:
+			try {
+				for (int i = 0; i < N_+1; i++) {
+					D_.push_back(pars["Machine"]["BondDim"][i]);
+				}
 			}
-			D_.push_back(1);
+			// Otherwise treat it as an integer and create D_ with the same BondDim for all sites
+			catch (...) {
+				D_.push_back(1);
+				for (int i = 1; i < N_; i++) {
+					D_.push_back(pars["Machine"]["BondDim"]);
+				}
+				D_.push_back(1);
+			}			
 		  }
 		  else {
 			  throw InvalidInputError("Unspecified bond dimension");
@@ -706,13 +711,6 @@ namespace netket {
 		//	W_ = pars["Machine"]["W"];
 		  //}
 		};
-
-		// Still to do: 
-		// Do vectorization for spins more than 1/2. (Done in a sketchy way)
-		// Don't forget the logarithms where needed. (Done)
-		// Upgrade look ups to be more efficient (tree calculation?).
-		// Look ups for LogDer?.
-		// Slight modifications for OBC.
 	};
 
 } // namespace netket
