@@ -17,7 +17,9 @@
 #include <vector>
 #include "Lookup/lookup.hpp"
 #include "Utils/all_utils.hpp"
+#include "abstract_mps.hpp"
 #include "mps_translation.hpp"
+#include "mps_diagonal.hpp"
 
 #ifndef NETKET_SBS_HPP
 #define NETKET_SBS_HPP
@@ -28,6 +30,7 @@ namespace netket {
 	class SBS : public AbstractMachine<T> {
 		using VectorType = typename AbstractMachine<T>::VectorType;
 		using MatrixType = typename AbstractMachine<T>::MatrixType;
+		using Ptype = std::unique_ptr<AbstractMPS<T>>;
 
 		// Number of sites
 		int N_;
@@ -37,6 +40,8 @@ namespace netket {
 		int Duser_;
 		// Number of strings
 		int M_;
+		// Flag for using diagonal MPS
+		bool diagonal_flag_;
 
 		// Bond dimension of each string (allow different dimensions among strings)
 		std::vector<int> Dstr_;
@@ -58,7 +63,7 @@ namespace netket {
 		std::vector<std::vector<int>> string2site_;
 
 		// Vector that stores the MPS object for each string
-		std::vector<MPSTranslation<T>> strings_;
+		std::vector<Ptype> strings_;
 		
 		// Local lookup matrices
 		//std::vector<MatrixType> loc_lt;
@@ -92,22 +97,24 @@ namespace netket {
 
 			// Default parameters initializations (may change these if we add additional setting options)
 			// 1) Initialize parameters Dstr_ and Lstr_ vector with the same user dimension and length for all strings
+			//	  Also initialize MPS objects with the correct dimensions and calculate npar_
 			//    currently all strings will cover the whole configuration (we have to change that with settings)
 			Lstr_cumsum_.push_back(0);
+			npar_ = 0;
 			for (int i = 0; i < M_; i++) {
 				Dstr_.push_back(Duser_);
 				Lstr_.push_back(N_);
 				Lstr_cumsum_.push_back(Lstr_cumsum_[i] + 2 * Lstr_[i]);
+				if (diagonal_flag_) {
+					strings_.push_back(Ptype(new MPSDiagonal<T>(hilbert_, Lstr_.back(), Dstr_.back(), Lstr_.back())));
+				}
+				else {
+					strings_.push_back(Ptype(new MPSTranslation<T>(hilbert_, Lstr_.back(), Dstr_.back(), Lstr_.back())));
+				}
+				
+				npar_ += strings_.back()->Npar();
 			}
-			// 2) Initialize MPS objects with the correct dimensions as well as site2string vector
-			//	  Also calculate npar_
-			//    Note: currently we do not use symmetries in the MPS so symperiod = length of MPS
-			npar_ = 0;
-			for (int i = 0; i < M_; i++) {
-				strings_.push_back(MPSTranslation<T>::MPSTranslation(hilbert_, Lstr_[i], Dstr_[i], Lstr_[i]));
-				npar_ += strings_[i].Npar();
-			}
-			// 3) Initialize site2string vector.
+			// 2) Initialize site2string vector.
 			//    In the current default setting each site belongs to all strings
 			for (int site = 0; site < N_; site++) {
 				site2string_.push_back(pushback_vec2);
@@ -117,7 +124,7 @@ namespace netket {
 					site2string_[site][i][1] = site;
 				}
 			}
-			// 4) Initialize string2site vector
+			// 3) Initialize string2site vector
 			//    In the current default setting each site belongs to all strings
 			for (int i = 0; i < M_; i++) {
 				string2site_.push_back(pushback_vec);
@@ -127,7 +134,12 @@ namespace netket {
 			}
 
 			// Machine creation messages
-			InfoMessage() << "SBS machine with " << N_ << " sites created" << std::endl;
+			if (diagonal_flag_) {
+				InfoMessage() << "Diagonal SBS machine with " << N_ << " sites created" << std::endl;
+			}
+			else {
+				InfoMessage() << "SBS machine with " << N_ << " sites created" << std::endl;
+			}
 			InfoMessage() << "Physical dimension d = " << d_ << " and bond dimension D = " << Duser_ << std::endl;
 			InfoMessage() << "Number of strings M = " << M_ << std::endl;
 			InfoMessage() << "Same bond dimension in all strings" << std::endl;
@@ -141,8 +153,8 @@ namespace netket {
 			VectorType pars(npar_);
 
 			for (int i = 0; i < M_; i++) {
-				pars.segment(seg_init, strings_[i].Npar()) = strings_[i].GetParameters();
-				seg_init += strings_[i].Npar();
+				pars.segment(seg_init, strings_[i]->Npar()) = strings_[i]->GetParameters();
+				seg_init += strings_[i]->Npar();
 			}
 			return pars;
 		};
@@ -151,8 +163,8 @@ namespace netket {
 			int seg_init = 0;
 
 			for (int i = 0; i < M_; i++) {
-				strings_[i].SetParameters(pars.segment(seg_init, strings_[i].Npar()));
-				seg_init += strings_[i].Npar();
+				strings_[i]->SetParameters(pars.segment(seg_init, strings_[i]->Npar()));
+				seg_init += strings_[i]->Npar();
 			}
 		};
 
@@ -161,8 +173,8 @@ namespace netket {
 			int seg_init = 0;
 
 			for (int i = 0; i < M_; i++) {
-				strings_[i].SetParametersIdentity(pars.segment(seg_init, strings_[i].Npar()));
-				seg_init += strings_[i].Npar();
+				strings_[i]->SetParametersIdentity(pars.segment(seg_init, strings_[i]->Npar()));
+				seg_init += strings_[i]->Npar();
 			}
 		}
 
@@ -177,7 +189,7 @@ namespace netket {
 
 		void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
 			for (int i = 0; i < M_; i++) {
-				strings_[i].InitLookup(extract(v, i), lt, Lstr_cumsum_[i]);
+				strings_[i]->InitLookup(extract(v, i), lt, Lstr_cumsum_[i]);
 			}
 		};
 
@@ -192,7 +204,7 @@ namespace netket {
 
 				for (auto const &ent : string_lists[0]) {
 					i = ent.first;
-					strings_[i].UpdateLookup(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+					strings_[i]->UpdateLookup(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
 				}
 			}
 		};
@@ -210,7 +222,7 @@ namespace netket {
 		T LogVal(const Eigen::VectorXd &v) override {
 			T s = T(0, 0);
 			for (int i = 0; i < M_; i++) { 
-				s += strings_[i].LogVal(extract(v, i));
+				s += strings_[i]->LogVal(extract(v, i));
 			}
 			return s;
 		};
@@ -218,7 +230,7 @@ namespace netket {
 		T LogVal(const Eigen::VectorXd &v, const LookupType &lt) override {
 			T s = T(0, 0);
 			for (int i = 0; i < M_; i++) {
-				s += strings_[i].LogVal(lt, Lstr_cumsum_[i]);
+				s += strings_[i]->LogVal(lt, Lstr_cumsum_[i]);
 			}
 			return s;
 		};
@@ -245,7 +257,7 @@ namespace netket {
 					string_lists = tochange4string(tochange[k], newconf[k]);
 					for (auto const &ent : string_lists[0]) {
 						i = ent.first;
-						logvaldiffs(k) += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i]);
+						logvaldiffs(k) += strings_[i]->LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i]);
 					}
 				}
 			}
@@ -273,13 +285,13 @@ namespace netket {
 			for (auto const &ent : string_lists[0]) {
 				i = ent.first;
 				//if (string_lists[0][i].size() > 1) {
-				//	result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				//	result += strings_[i]->LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
 				//}
 				//else if (string_lists[0][i].size() > 0) {
-				//	result += strings_[i].FastLogValDiff(string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				//	result += strings_[i]->FastLogValDiff(string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
 				//}
 
-				result += strings_[i].LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				result += strings_[i]->LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
 			}
 
 			//InfoMessage() << "LogValDiff looukup ended" << std::endl;
@@ -316,8 +328,8 @@ namespace netket {
 			int seg_init = 0;
 
 			for (int i = 0; i < M_; i++) {
-				der.segment(seg_init, strings_[i].Npar()) = strings_[i].DerLog(extract(v, i));
-				seg_init += strings_[i].Npar();
+				der.segment(seg_init, strings_[i]->Npar()) = strings_[i]->DerLog(extract(v, i));
+				seg_init += strings_[i]->Npar();
 			}
 
 			return der;
@@ -365,6 +377,14 @@ namespace netket {
 		  }
 		  else {
 			  throw InvalidInputError("Unspecified number of strings");
+		  }
+
+		  if (FieldExists(pars["Machine"], "Diagonal")) {
+			  diagonal_flag_ = pars["Machine"]["Diagonal"];
+		  }
+		  else {
+			  // Use non-diagonal by default
+			  diagonal_flag_ = false;
 		  }
 
 		  Init();
