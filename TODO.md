@@ -1,11 +1,17 @@
 ### Currently working
 - Open MPS, versions with constant (*deprecated*) and vector D (`mps_open.hpp`).
-- Periodic MPS (`mps_periodic.hpp`) - This is special case of `MPSTranslation` with `symperiod_ = N`.
+- Periodic MPS (`mps_periodic.hpp`) (might be *deprecated*)
 - Translation invariant periodic MPS with arbitrary symmetry period (`mps_translation.hpp`).
 - Diagonal MPS (`mps_diagonal.hpp`) - Same as `MPSTranslation` but matrices are diagonal and we use `cwiseProduct` instead of matrix product (a bit faster).
-- SBS (`sbs.hpp`). Uses `MPSTranslation` or `MPSDiagonal` classes for the MPS calculations. These are defined by the `AbstractMPS` class.
+- SBS (`sbs.hpp`).
 
 All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does not converge either.
+
+#### Notes
+- `MPSTranslation` and `MPSDiagonal` are derived from `AbstractMPS`.
+- `MPSperiodic` is a special case of `MPSTranslation` with `symperiod_ = N`.
+- SBS uses `MPSTranslation` or `MPSDiagonal` (user selects) for MPS calculations.
+- User can give different bond dimensions for `MPSopen` as a python list of length N+1. If an integer is given it is treated as a constant bond dimension.
 
 ### Implemented but not working
 - Canonical form in Open MPS (doesn't work in Python either).
@@ -20,5 +26,4 @@ All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does 
 - Currently SBS uses MPS classes for calculations, but each MPS function is defined twice in the class, once for pure MPS and once for SBS (incompatibility with `confindex_` calculation). It might be possible to combine some of these functions.
 - Setting to save weights for all cases (it is currently commented).
 - Use of lookups in the derivative (is this possible?). Currently we do the contractions from scratch in the `DerLog` functions.
-- Setting for different dimensions in open MPS and different string lengths and bond dimensions in SBS. Code supports that but currently it is not controlled by user.
-
+- Setting for different string lengths and bond dimensions in SBS. Code supports that but currently it is not controlled by user.
