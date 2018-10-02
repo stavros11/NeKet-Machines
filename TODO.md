@@ -20,6 +20,5 @@ All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does 
 - Currently SBS uses MPS classes for calculations, but each MPS function is defined twice in the class, once for pure MPS and once for SBS (incompatibility with `confindex_` calculation). It might be possible to combine some of these functions.
 - Setting to save weights for all cases (it is currently commented).
 - Use of lookups in the derivative (is this possible?). Currently we do the contractions from scratch in the `DerLog` functions.
-- Special case of diagonal SBS.
 - Setting for different dimensions in open MPS and different string lengths and bond dimensions in SBS. Code supports that but currently it is not controlled by user.
 
