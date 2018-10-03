@@ -97,16 +97,6 @@ namespace netket {
 			}
 		};
 
-		// Auxiliary function that computes local vector vtilde_
-		//inline void ComputeVtilde(const Eigen::VectorXd &v, Eigen::VectorXd &vtilde) {
-		//	vtilde = (v + Eigen::VectorXd::Ones(N_)) / 2;
-		//}
-
-		// Auxiliary function that transforms newconf to {0,1}
-		//inline int ComputeNewConftilde(const double x) {
-		//	return (int)((x + 1) / 2);
-		//}
-
 		int Npar() const override { return npar_; };
 
 		VectorType GetParameters() override {
@@ -161,59 +151,28 @@ namespace netket {
 		int Nvisible() const override { return N_; };
 
 		void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
-			InitLookup(v, lt, 0);
-		};
-
-		void InitLookup(const Eigen::VectorXd &v, LookupType &lt, const int &start_ind) {
 			int site;
 
 			// We need 2 * L matrix lookups for each string, where L is the string's length
 			// other than that lookups work exactly as in the MPS case
 
 			// First (left) site
-			_InitLookup_check(lt, start_ind);
-			lt.V(start_ind) = W_[0][confindex_[v(0)]];
+			_InitLookup_check(lt, 0);
+			lt.V(0) = W_[0][confindex_[v(0)]];
 
 			// Last (right) site
-			_InitLookup_check(lt, start_ind + 1);
-			lt.V(start_ind + 1) = W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]];
+			_InitLookup_check(lt, 1);
+			lt.V(1) = W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]];
 
 			// Rest sites
 			for (int i = 2; i < 2 * N_; i += 2) {
-				_InitLookup_check(lt, start_ind + i);
+				_InitLookup_check(lt, i);
 				site = i / 2;
-				lt.V(start_ind + i) = lt.V(start_ind + i - 2).cwiseProduct(W_[(site % symperiod_)][confindex_[v(site)]]);
+				lt.V(i) = lt.V(i - 2).cwiseProduct(W_[(site % symperiod_)][confindex_[v(site)]]);
 
-				_InitLookup_check(lt, start_ind + i + 1);
+				_InitLookup_check(lt, i + 1);
 				site = N_ - 1 - site;
-				lt.V(start_ind + i + 1) = W_[site % symperiod_][confindex_[v(site)]].cwiseProduct(lt.V(start_ind + i - 1));
-			}
-		};
-
-		// For SBS use
-		void InitLookup(const std::vector<int> &v, LookupType &lt, const int &start_ind) override {
-			int site;
-
-			// We need 2 * L matrix lookups for each string, where L is the string's length
-			// other than that lookups work exactly as in the MPS case
-
-			// First (left) site
-			_InitLookup_check(lt, start_ind);
-			lt.V(start_ind) = W_[0][v[0]];
-
-			// Last (right) site
-			_InitLookup_check(lt, start_ind + 1);
-			lt.V(start_ind + 1) = W_[(N_ - 1) % symperiod_][v[N_ - 1]];
-
-			// Rest sites
-			for (int i = 2; i < 2 * N_; i += 2) {
-				_InitLookup_check(lt, start_ind + i);
-				site = i / 2;
-				lt.V(start_ind + i) = lt.V(start_ind + i - 2).cwiseProduct(W_[(site % symperiod_)][v[site]]);
-
-				_InitLookup_check(lt, start_ind + i + 1);
-				site = N_ - 1 - site;
-				lt.V(start_ind + i + 1) = W_[site % symperiod_][v[site]].cwiseProduct(lt.V(start_ind + i - 1));
+				lt.V(i + 1) = W_[site % symperiod_][confindex_[v(site)]].cwiseProduct(lt.V(i - 1));
 			}
 		};
 
@@ -238,19 +197,10 @@ namespace netket {
 			return idx;
 		};
 
-		// Check lookups later
 		void UpdateLookup(const Eigen::VectorXd &v,
 			const std::vector<int> &tochange,
 			const std::vector<double> &newconf,
 			LookupType &lt) override {
-			UpdateLookup(v, tochange, newconf, lt, 0);
-		};
-
-		void UpdateLookup(const Eigen::VectorXd &v,
-			const std::vector<int> &tochange,
-			const std::vector<double> &newconf,
-			LookupType &lt,
-			const int &start_ind) {
 
 			std::size_t nchange = tochange.size();
 			if (nchange <= 0) {
@@ -266,26 +216,26 @@ namespace netket {
 
 			// Update left (site++)
 			if (site == 0) {
-				lt.V(start_ind) = W_[0][confindex_[newconf[sorted_ind[0]]]];
+				lt.V(0) = W_[0][confindex_[newconf[sorted_ind[0]]]];
 			}
 			else {
-				lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][confindex_[newconf[sorted_ind[0]]]]);
+				lt.V(2 * site) = lt.V(2 * (site - 1)).cwiseProduct(W_[site % symperiod_][confindex_[newconf[sorted_ind[0]]]]);
 			}
 
 			//InfoMessage() << "Lookup check1" << std::endl;
 
 			for (std::size_t k = 1; k < nchange; k++) {
 				for (site = tochange[sorted_ind[k - 1]] + 1; site < tochange[sorted_ind[k]]; site++) {
-					lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][confindex_[v(site)]]);
+					lt.V(2 * site) = lt.V(2 * (site - 1)).cwiseProduct(W_[site % symperiod_][confindex_[v(site)]]);
 				}
 				site = tochange[sorted_ind[k]];
-				lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
+				lt.V(2 * site) = lt.V(2 * (site - 1)).cwiseProduct(W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
 			}
 
 			//InfoMessage() << "Lookup check2" << std::endl;
 
 			for (site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
-				lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][confindex_[v(site)]]);
+				lt.V(2 * site) = lt.V(2 * (site - 1)).cwiseProduct(W_[site % symperiod_][confindex_[v(site)]]);
 			}
 
 			//InfoMessage() << "Lookup update left completed" << std::endl;
@@ -293,99 +243,26 @@ namespace netket {
 			// Update right (site--)
 			site = tochange[sorted_ind[nchange - 1]];
 			if (site == N_ - 1) {
-				lt.V(start_ind + 1) = W_[(N_ - 1) % symperiod_][confindex_[newconf[sorted_ind[nchange - 1]]]];
+				lt.V(1) = W_[(N_ - 1) % symperiod_][confindex_[newconf[sorted_ind[nchange - 1]]]];
 			}
 			else {
-				lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][confindex_[newconf[sorted_ind[nchange - 1]]]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
+				lt.V(2 * (N_ - site) - 1) = W_[site % symperiod_][confindex_[newconf[sorted_ind[nchange - 1]]]].cwiseProduct(lt.V(2 * (N_ - site) - 3));
 			}
 
 			//InfoMessage() << "First right assigned" << std::endl;
 
 			for (int k = nchange - 2; k >= 0; k--) {
 				for (site = tochange[sorted_ind[k + 1]] - 1; site > tochange[sorted_ind[k]]; site--) {
-					lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][confindex_[v(site)]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
+					lt.V(2 * (N_ - site) - 1) = W_[site % symperiod_][confindex_[v(site)]].cwiseProduct(lt.V(2 * (N_ - site) - 3));
 				}
 				site = tochange[sorted_ind[k]];
-				lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
+				lt.V(2 * (N_ - site) - 1) = W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]].cwiseProduct(lt.V(2 * (N_ - site) - 3));
 			}
 
 			//InfoMessage() << "Middle loops done" << std::endl;
 
 			for (site = tochange[sorted_ind[0]] - 1; site >= 0; site--) {
-				lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][confindex_[v(site)]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
-			}
-
-			//InfoMessage() << "Lookup update ended" << std::endl;
-		};
-
-		// For SBS use
-		void UpdateLookup(const std::vector<int> &v,
-			const std::vector<int> &tochange,
-			const std::vector<int> &newconf,
-			LookupType &lt,
-			const int &start_ind) override {
-
-			std::size_t nchange = tochange.size();
-			if (nchange <= 0) {
-				return;
-			}
-			std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
-			int site = tochange[sorted_ind[0]];
-
-			//InfoMessage() << "Lookup update called" << std::endl;
-			//for (std::size_t k = 0; k < nchange; k++) {
-			//	InfoMessage() << tochange[sorted_ind[k]] << " , " << newconf[sorted_ind[k]] << std::endl;
-			//}
-
-			// Update left (site++)
-			if (site == 0) {
-				lt.V(start_ind) = W_[0][newconf[sorted_ind[0]]];
-			}
-			else {
-				lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][newconf[sorted_ind[0]]]);
-			}
-
-			//InfoMessage() << "Lookup check1" << std::endl;
-
-			for (std::size_t k = 1; k < nchange; k++) {
-				for (site = tochange[sorted_ind[k - 1]] + 1; site < tochange[sorted_ind[k]]; site++) {
-					lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][v[site]]);
-				}
-				site = tochange[sorted_ind[k]];
-				lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][newconf[sorted_ind[k]]]);
-			}
-
-			//InfoMessage() << "Lookup check2" << std::endl;
-
-			for (site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
-				lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][v[site]]);
-			}
-
-			//InfoMessage() << "Lookup update left completed" << std::endl;
-
-			// Update right (site--)
-			site = tochange[sorted_ind[nchange - 1]];
-			if (site == N_ - 1) {
-				lt.V(start_ind + 1) = W_[(N_ - 1) % symperiod_][newconf[sorted_ind[nchange - 1]]];
-			}
-			else {
-				lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][newconf[sorted_ind[nchange - 1]]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
-			}
-
-			//InfoMessage() << "First right assigned" << std::endl;
-
-			for (int k = nchange - 2; k >= 0; k--) {
-				for (site = tochange[sorted_ind[k + 1]] - 1; site > tochange[sorted_ind[k]]; site--) {
-					lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][v[site]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
-				}
-				site = tochange[sorted_ind[k]];
-				lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][newconf[sorted_ind[k]]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
-			}
-
-			//InfoMessage() << "Middle loops done" << std::endl;
-
-			for (site = tochange[sorted_ind[0]] - 1; site >= 0; site--) {
-				lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][v[site]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
+				lt.V(2 * (N_ - site) - 1) = W_[site % symperiod_][confindex_[v(site)]].cwiseProduct(lt.V(2 * (N_ - site) - 3));
 			}
 
 			//InfoMessage() << "Lookup update ended" << std::endl;
@@ -399,34 +276,15 @@ namespace netket {
 				c = c.cwiseProduct(W_[site % symperiod_][confindex_[v(site)]]);
 			}
 			return c;
-		};
-		//Auxiliary function that calculates contractions from site1 to site2
-		inline VectorType mps_contraction(const std::vector<int> &v,
-			const int &site1, const int &site2) {
-			VectorType c = VectorType::Ones(D_);
-			for (int site = site1; site < site2; site++) {
-				c = c.cwiseProduct(W_[site % symperiod_][v[site]]);
-			}
-			return c;
-		};
+		};		
 
 		T LogVal(const Eigen::VectorXd &v) override {
 			//InfoMessage() << "LogVal called" << std::endl;
 			return std::log(mps_contraction(v, 0, N_).sum());
 		};
 
-		// For SBS use
-		T LogVal(const std::vector<int> &v) override {
-			//InfoMessage() << "LogVal called" << std::endl;
-			return std::log(mps_contraction(v, 0, N_).sum());
-		};
-
 		T LogVal(const Eigen::VectorXd &v, const LookupType &lt) override {
-			return LogVal(lt, 0);
-		};
-
-		inline T LogVal(const LookupType &lt, const int &start_ind) override {
-			return std::log(lt.V(start_ind + 2 * N_ - 2).sum());
+			return std::log(lt.V(2 * N_ - 2).sum());
 		};
 
 		VectorType LogValDiff(
@@ -516,73 +374,6 @@ namespace netket {
 			return std::log(new_prod.sum() / lt.V(2 * N_ - 2).sum());
 		};
 
-		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
-			const std::vector<int> &newconf,
-			const LookupType &lt, const int &start_ind) override {
-
-			const std::size_t nflip = toflip.size();
-			if (nflip <= 0) {
-				return T(0, 0);
-			}
-
-			std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
-			VectorType new_prods(D_);
-			int site = toflip[sorted_ind[0]];
-
-			if (site == 0) {
-				new_prods = W_[0][newconf[sorted_ind[0]]];
-			}
-			else {
-				new_prods = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][newconf[sorted_ind[0]]]);
-			}
-
-			for (std::size_t i = 1; i < nflip; i++) {
-				site = toflip[sorted_ind[i]];
-				new_prods = new_prods.cwiseProduct(mps_contraction(v, toflip[sorted_ind[i - 1]] + 1, site).cwiseProduct(W_[site % symperiod_][newconf[sorted_ind[i]]]));
-			}
-
-			site = toflip[sorted_ind[nflip - 1]];
-			if (site < N_ - 1) {
-				//new_prods *= mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_);
-				new_prods = new_prods.cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
-			}
-
-			//InfoMessage() << "LogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
-
-			return std::log(new_prods.sum() / lt.V(start_ind + 2 * N_ - 2).sum());
-		};
-
-		// No (k and lookup)-dependent version for SBS use
-		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
-			const std::vector<int> &newconf) override {
-			const std::size_t nflip = toflip.size();
-			if (nflip <= 0) {
-				return T(0, 0);
-			}
-
-			std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
-			StateType current_psi = mps_contraction(v, 0, N_).sum();
-			VectorType new_prods(D_);
-
-			if (toflip[sorted_ind[0]] == 0) {
-				new_prods = W_[0][newconf[sorted_ind[0]]];
-			}
-			else {
-				new_prods = mps_contraction(v, 0, toflip[sorted_ind[0]]).cwiseProduct(W_[toflip[sorted_ind[0]] % symperiod_][newconf[sorted_ind[0]]]);
-			}
-			for (std::size_t i = 1; i < nflip; i++) {
-				//InfoMessage() << "toflip = " << toflip[i] << std::endl;
-				new_prods = new_prods.cwiseProduct(mps_contraction(v, toflip[sorted_ind[i - 1]] + 1, toflip[sorted_ind[i]]).cwiseProduct(W_[toflip[sorted_ind[i]] % symperiod_][newconf[sorted_ind[i]]]));
-			}
-			if (toflip[sorted_ind[nflip - 1]] < N_ - 1) {
-				new_prods = new_prods.cwiseProduct(mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_));
-			}
-
-			//InfoMessage() << "LogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
-
-			return std::log(new_prods.sum() / current_psi);
-		};
-
 		// Derivative with full calculation
 		VectorType DerLog(const Eigen::VectorXd &v) override {
 			std::vector<VectorType> left_prods, right_prods;
@@ -606,35 +397,6 @@ namespace netket {
 				der.segment((d_ * (site % symperiod_) + confindex_[v(site)])* D_, D_) += Eigen::Map<VectorType>((temp_product).transpose().data(), D_);
 			}
 			der.segment((d_ * ((N_ - 1) % symperiod_) + confindex_[v(N_ - 1)])* D_, D_) += Eigen::Map<VectorType>((left_prods[N_ - 2]).transpose().data(), D_);
-
-			//InfoMessage() << "Derivative ended" << std::endl;
-
-			return der / left_prods[N_ - 1].sum();
-		};
-
-		// For SBS use
-		VectorType DerLog(const std::vector<int> &v) override {
-			VectorType temp_product(D_);
-			std::vector<VectorType> left_prods, right_prods;
-			VectorType der = VectorType::Zero(npar_);
-
-			//InfoMessage() << "Derivative called" << std::endl;
-			// Calculate products
-			left_prods.push_back(W_[0][v[0]]);
-			right_prods.push_back(W_[(N_ - 1) % symperiod_][v[N_ - 1]]);
-			for (int site = 1; site < N_ - 1; site++) {
-				left_prods.push_back(left_prods[site - 1].cwiseProduct(W_[site][v[site]]));
-				right_prods.push_back(W_[(N_ - 1 - site) % symperiod_][v[N_ - 1 - site]].cwiseProduct(right_prods[site - 1]));
-			}
-			left_prods.push_back(left_prods[N_ - 2].cwiseProduct(W_[(N_ - 1) % symperiod_][v[N_ - 1]]));
-			right_prods.push_back(W_[0][v[0]].cwiseProduct(right_prods[N_ - 2]));
-
-			der.segment(v[0] * D_, D_) += Eigen::Map<VectorType>((right_prods[N_ - 2]).transpose().data(), D_);
-			for (int site = 1; site < N_ - 1; site++) {
-				temp_product = right_prods[N_ - site - 2].cwiseProduct(left_prods[site - 1]);
-				der.segment((d_ * (site % symperiod_) + v[site])*D_, D_) += Eigen::Map<VectorType>((temp_product).transpose().data(), D_);
-			}
-			der.segment((d_ * ((N_ - 1) % symperiod_) + v[N_ - 1])*D_, D_) += Eigen::Map<VectorType>((left_prods[N_ - 2]).transpose().data(), D_);
 
 			//InfoMessage() << "Derivative ended" << std::endl;
 
@@ -707,6 +469,224 @@ namespace netket {
 		  
 
 		};
+
+		// ###################################### //
+		// ##### Functions for SBS use only ##### //
+		// ###################################### //
+		// We treat SBS differently for efficiency:
+		// Otherwise we would have to define a differend confindex_ for each MPS string in the SBS
+
+		void InitLookup(const std::vector<int> &v, LookupType &lt, const int &start_ind) override {
+			int site;
+
+			// We need 2 * L matrix lookups for each string, where L is the string's length
+			// other than that lookups work exactly as in the MPS case
+
+			// First (left) site
+			_InitLookup_check(lt, start_ind);
+			lt.V(start_ind) = W_[0][v[0]];
+
+			// Last (right) site
+			_InitLookup_check(lt, start_ind + 1);
+			lt.V(start_ind + 1) = W_[(N_ - 1) % symperiod_][v[N_ - 1]];
+
+			// Rest sites
+			for (int i = 2; i < 2 * N_; i += 2) {
+				_InitLookup_check(lt, start_ind + i);
+				site = i / 2;
+				lt.V(start_ind + i) = lt.V(start_ind + i - 2).cwiseProduct(W_[(site % symperiod_)][v[site]]);
+
+				_InitLookup_check(lt, start_ind + i + 1);
+				site = N_ - 1 - site;
+				lt.V(start_ind + i + 1) = W_[site % symperiod_][v[site]].cwiseProduct(lt.V(start_ind + i - 1));
+			}
+		};
+
+		void UpdateLookup(const std::vector<int> &v,
+			const std::vector<int> &tochange,
+			const std::vector<int> &newconf,
+			LookupType &lt,
+			const int &start_ind) override {
+
+			std::size_t nchange = tochange.size();
+			if (nchange <= 0) {
+				return;
+			}
+			std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
+			int site = tochange[sorted_ind[0]];
+
+			//InfoMessage() << "Lookup update called" << std::endl;
+			//for (std::size_t k = 0; k < nchange; k++) {
+			//	InfoMessage() << tochange[sorted_ind[k]] << " , " << newconf[sorted_ind[k]] << std::endl;
+			//}
+
+			// Update left (site++)
+			if (site == 0) {
+				lt.V(start_ind) = W_[0][newconf[sorted_ind[0]]];
+			}
+			else {
+				lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][newconf[sorted_ind[0]]]);
+			}
+
+			//InfoMessage() << "Lookup check1" << std::endl;
+
+			for (std::size_t k = 1; k < nchange; k++) {
+				for (site = tochange[sorted_ind[k - 1]] + 1; site < tochange[sorted_ind[k]]; site++) {
+					lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][v[site]]);
+				}
+				site = tochange[sorted_ind[k]];
+				lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][newconf[sorted_ind[k]]]);
+			}
+
+			//InfoMessage() << "Lookup check2" << std::endl;
+
+			for (site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
+				lt.V(start_ind + 2 * site) = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][v[site]]);
+			}
+
+			//InfoMessage() << "Lookup update left completed" << std::endl;
+
+			// Update right (site--)
+			site = tochange[sorted_ind[nchange - 1]];
+			if (site == N_ - 1) {
+				lt.V(start_ind + 1) = W_[(N_ - 1) % symperiod_][newconf[sorted_ind[nchange - 1]]];
+			}
+			else {
+				lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][newconf[sorted_ind[nchange - 1]]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
+			}
+
+			//InfoMessage() << "First right assigned" << std::endl;
+
+			for (int k = nchange - 2; k >= 0; k--) {
+				for (site = tochange[sorted_ind[k + 1]] - 1; site > tochange[sorted_ind[k]]; site--) {
+					lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][v[site]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
+				}
+				site = tochange[sorted_ind[k]];
+				lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][newconf[sorted_ind[k]]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
+			}
+
+			//InfoMessage() << "Middle loops done" << std::endl;
+
+			for (site = tochange[sorted_ind[0]] - 1; site >= 0; site--) {
+				lt.V(start_ind + 2 * (N_ - site) - 1) = W_[site % symperiod_][v[site]].cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
+			}
+
+			//InfoMessage() << "Lookup update ended" << std::endl;
+		};	
+	
+		// Auxilliary function that calculates MPS contractions from site1 to site2
+		inline VectorType mps_contraction(const std::vector<int> &v,
+			const int &site1, const int &site2) {
+			VectorType c = VectorType::Ones(D_);
+			for (int site = site1; site < site2; site++) {
+				c = c.cwiseProduct(W_[site % symperiod_][v[site]]);
+			}
+			return c;
+		};
+
+		T LogVal(const std::vector<int> &v) override {
+			//InfoMessage() << "LogVal called" << std::endl;
+			return std::log(mps_contraction(v, 0, N_).sum());
+		};
+
+		inline T LogVal(const LookupType &lt, const int &start_ind) override {
+			return std::log(lt.V(start_ind + 2 * N_ - 2).sum());
+		};
+
+		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
+			const std::vector<int> &newconf) override {
+			const std::size_t nflip = toflip.size();
+			if (nflip <= 0) {
+				return T(0, 0);
+			}
+
+			std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
+			StateType current_psi = mps_contraction(v, 0, N_).sum();
+			VectorType new_prods(D_);
+
+			if (toflip[sorted_ind[0]] == 0) {
+				new_prods = W_[0][newconf[sorted_ind[0]]];
+			}
+			else {
+				new_prods = mps_contraction(v, 0, toflip[sorted_ind[0]]).cwiseProduct(W_[toflip[sorted_ind[0]] % symperiod_][newconf[sorted_ind[0]]]);
+			}
+			for (std::size_t i = 1; i < nflip; i++) {
+				//InfoMessage() << "toflip = " << toflip[i] << std::endl;
+				new_prods = new_prods.cwiseProduct(mps_contraction(v, toflip[sorted_ind[i - 1]] + 1, toflip[sorted_ind[i]]).cwiseProduct(W_[toflip[sorted_ind[i]] % symperiod_][newconf[sorted_ind[i]]]));
+			}
+			if (toflip[sorted_ind[nflip - 1]] < N_ - 1) {
+				new_prods = new_prods.cwiseProduct(mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_));
+			}
+
+			//InfoMessage() << "LogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
+
+			return std::log(new_prods.sum() / current_psi);
+		};
+
+		T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
+			const std::vector<int> &newconf,
+			const LookupType &lt, const int &start_ind) override {
+
+			const std::size_t nflip = toflip.size();
+			if (nflip <= 0) {
+				return T(0, 0);
+			}
+
+			std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
+			VectorType new_prods(D_);
+			int site = toflip[sorted_ind[0]];
+
+			if (site == 0) {
+				new_prods = W_[0][newconf[sorted_ind[0]]];
+			}
+			else {
+				new_prods = lt.V(start_ind + 2 * (site - 1)).cwiseProduct(W_[site % symperiod_][newconf[sorted_ind[0]]]);
+			}
+
+			for (std::size_t i = 1; i < nflip; i++) {
+				site = toflip[sorted_ind[i]];
+				new_prods = new_prods.cwiseProduct(mps_contraction(v, toflip[sorted_ind[i - 1]] + 1, site).cwiseProduct(W_[site % symperiod_][newconf[sorted_ind[i]]]));
+			}
+
+			site = toflip[sorted_ind[nflip - 1]];
+			if (site < N_ - 1) {
+				//new_prods *= mps_contraction(v, toflip[sorted_ind[nflip - 1]] + 1, N_);
+				new_prods = new_prods.cwiseProduct(lt.V(start_ind + 2 * (N_ - site) - 3));
+			}
+
+			//InfoMessage() << "LogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
+
+			return std::log(new_prods.sum() / lt.V(start_ind + 2 * N_ - 2).sum());
+		};
+	
+		VectorType DerLog(const std::vector<int> &v) override {
+			VectorType temp_product(D_);
+			std::vector<VectorType> left_prods, right_prods;
+			VectorType der = VectorType::Zero(npar_);
+
+			//InfoMessage() << "Derivative called" << std::endl;
+			// Calculate products
+			left_prods.push_back(W_[0][v[0]]);
+			right_prods.push_back(W_[(N_ - 1) % symperiod_][v[N_ - 1]]);
+			for (int site = 1; site < N_ - 1; site++) {
+				left_prods.push_back(left_prods[site - 1].cwiseProduct(W_[site][v[site]]));
+				right_prods.push_back(W_[(N_ - 1 - site) % symperiod_][v[N_ - 1 - site]].cwiseProduct(right_prods[site - 1]));
+			}
+			left_prods.push_back(left_prods[N_ - 2].cwiseProduct(W_[(N_ - 1) % symperiod_][v[N_ - 1]]));
+			right_prods.push_back(W_[0][v[0]].cwiseProduct(right_prods[N_ - 2]));
+
+			der.segment(v[0] * D_, D_) += Eigen::Map<VectorType>((right_prods[N_ - 2]).transpose().data(), D_);
+			for (int site = 1; site < N_ - 1; site++) {
+				temp_product = right_prods[N_ - site - 2].cwiseProduct(left_prods[site - 1]);
+				der.segment((d_ * (site % symperiod_) + v[site])*D_, D_) += Eigen::Map<VectorType>((temp_product).transpose().data(), D_);
+			}
+			der.segment((d_ * ((N_ - 1) % symperiod_) + v[N_ - 1])*D_, D_) += Eigen::Map<VectorType>((left_prods[N_ - 2]).transpose().data(), D_);
+
+			//InfoMessage() << "Derivative ended" << std::endl;
+
+			return der / left_prods[N_ - 1].sum();
+		};
+	
 	};
 
 } // namespace netket
