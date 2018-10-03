@@ -83,6 +83,7 @@ namespace netket {
 
 		// Auxiliary function that defines the matrices
 		void Init() {
+			int Mdiag = 0;
 			std::vector<std::vector<int>> pushback_vec2;
 			std::vector<int> two_component_vec, pushback_vec;
 			two_component_vec.push_back(0);
@@ -98,16 +99,14 @@ namespace netket {
 			// 1) Initialize parameters Dstr_ and Lstr_ vector with the same user dimension and length for all strings
 			//	  Also initialize MPS objects with the correct dimensions and calculate npar_
 			//    currently all strings will cover the whole configuration (we have to change that with settings)
-			Lstr_cumsum_.push_back(0);
 			npar_ = 0;
 			for (int i = 0; i < M_; i++) {
-				Lstr_.push_back(N_);
-				Lstr_cumsum_.push_back(Lstr_cumsum_[i] + 2 * Lstr_[i]);
-				if (diagonal_flag_) {
-					strings_.push_back(Ptype(new MPSDiagonal<T>(hilbert_, Lstr_.back(), Dstr_.back(), Lstr_.back())));
+				if (diagonal_flag_[i]) {
+					strings_.push_back(Ptype(new MPSDiagonal<T>(hilbert_, Lstr_[i], Dstr_[i], symperiod_[i])));
+					Mdiag++;
 				}
 				else {
-					strings_.push_back(Ptype(new MPSTranslation<T>(hilbert_, Lstr_.back(), Dstr_.back(), Lstr_.back())));
+					strings_.push_back(Ptype(new MPSTranslation<T>(hilbert_, Lstr_[i], Dstr_[i], symperiod_[i])));
 				}
 				
 				npar_ += strings_.back()->Npar();
@@ -122,25 +121,17 @@ namespace netket {
 					site2string_[site][i][1] = site;
 				}
 			}
-			// 3) Initialize string2site vector
-			//    In the current default setting each site belongs to all strings
-			for (int i = 0; i < M_; i++) {
-				string2site_.push_back(pushback_vec);
-				for (int j = 0; j < Lstr_[i]; j++) {
-					string2site_[i].push_back(j);
-				}
-			}
 
 			// Machine creation messages
-			if (diagonal_flag_) {
-				InfoMessage() << "Diagonal SBS machine with " << N_ << " sites created" << std::endl;
-			}
-			else {
-				InfoMessage() << "SBS machine with " << N_ << " sites created" << std::endl;
-			}
+			InfoMessage() << "SBS machine with " << N_ << " sites created" << std::endl;
 			InfoMessage() << "Physical dimension d = " << d_ << std::endl;
 			InfoMessage() << "Number of strings M = " << M_ << std::endl;
-			InfoMessage() << "Same bond dimension in all strings" << std::endl;
+			InfoMessage() << "Number of diagonal strings Mdiag = " << Mdiag << std::endl;
+			InfoMessage() << "Bond dimensions of strings are: ";
+			for (int i=0; i<M_; i++) {
+				std::cout << Dstr_[i] << " ";
+			}
+			std::cout << std::endl;
 			InfoMessage() << "The number of variational parameters is " << npar_ << std::endl;
 		};
 
