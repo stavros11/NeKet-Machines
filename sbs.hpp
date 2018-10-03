@@ -111,6 +111,7 @@ namespace netket {
 				
 				npar_ += strings_.back()->Npar();
 			}
+
 			// 2) Initialize site2string vector.
 			//    In the current default setting each site belongs to all strings
 			for (int site = 0; site < N_; site++) {
@@ -357,6 +358,8 @@ namespace netket {
 			  throw InvalidInputError("Number of spins is incompatible with given Hilbert space");
 		  }
 
+		  
+
 		  // Assign sites to each string (string2site)
 		  if (FieldExists(pars["Machine"], "StringSites")) {
 			  Lstr_cumsum_.push_back(0);
@@ -374,7 +377,21 @@ namespace netket {
 			  }
 		  }
 		  else {
-			  throw InvalidInputError("Unspecified distribution of sites in strings");
+			    // Default all strings cover the whole configuration if M is given. Otherwise error.
+				if (FieldExists(pars["Machine"], "Strings")) {
+			  		M_ = pars["Machine"]["Strings"];
+					for (int i=0; i<M_; i++) {
+				   		string2site_.push_back(empty_vector);
+						for (int j=0; j<N_; j++) {
+							string2site_.back().push_back(j);
+						}
+				   		Lstr_.push_back(N_);
+				   		Lstr_cumsum_.push_back(Lstr_cumsum_.back() + 2 * temp_string_length);
+			  	   }
+		  		}
+				else {
+					throw InvalidInputError("Insufficient information to create strings");
+				}
 		  }
 
 		  if (FieldExists(pars["Machine"], "Strings")) {
