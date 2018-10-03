@@ -358,8 +358,6 @@ namespace netket {
 			  throw InvalidInputError("Number of spins is incompatible with given Hilbert space");
 		  }
 
-		  
-
 		  // Assign sites to each string (string2site)
 		  if (FieldExists(pars["Machine"], "StringSites")) {
 			  Lstr_cumsum_.push_back(0);
