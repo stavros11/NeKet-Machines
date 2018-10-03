@@ -38,13 +38,12 @@ namespace netket {
 		int d_;
 		// Number of strings
 		int M_;
-		// Flag for using diagonal MPS
-		bool diagonal_flag_;
-
 		// Bond dimension of each string (allow different dimensions among strings)
 		std::vector<int> Dstr_;
 		// Symmetry period of each string
 		std::vector<int> symperiod_;
+		// Diagonal flags
+		std::vector<bool> diagonal_flag_;
 		// Length of each string (allow different lengths)
 		std::vector<int> Lstr_;
 		// Cumulative sum of Lstr used for lookup start indices
@@ -346,6 +345,9 @@ namespace netket {
 		}; 
 
 		void from_json(const json &pars) override {
+		  std::vector<int> empty_vector;
+		  int temp_string_length = 0, temp_ind=0;
+
 		  if (pars.at("Machine").at("Name") != "SBS") {
 			throw InvalidInputError("Error while constructing SBS from Json input");
 		  }
@@ -364,23 +366,108 @@ namespace netket {
 			  throw InvalidInputError("Number of spins is incompatible with given Hilbert space");
 		  }
 
+		  // Assign sites to each string (string2site)
+		  if (FieldExists(pars["Machine"], "StringSites")) {
+			  Lstr_cumsum_.push_back(0);
+			  M_ = 0;
+			  for (auto const &i: pars["Machine"]["StringSites"]) {
+				   string2site_.push_back(empty_vector);
+				   temp_string_length = 0;
+				   for (auto const &j: pars["Machine"]["StringSites"]) {
+					   string2site_.back().push_back(j);
+					   temp_string_length++;
+				   }
+				   Lstr_.push_back(temp_string_length)
+				   Lstr_cumsum_.push_back(Lstr_cumsum_.back() + 2 * temp_string_length);
+				   M_++;
+			  }
+		  }
+		  else {
+			  throw InvalidInputError("Unspecified distribution of sites in strings");
+		  }
+
 		  if (FieldExists(pars["Machine"], "Strings")) {
-			  M_ = pars["Machine"]["Strings"];
-		  }
-		  else {
-			  throw InvalidInputError("Unspecified number of strings");
+			  if (pars["Machine"]["Strings"] != M_) {
+				throw InvalidInputError("Given number of strings is incompatible with site to string distribution");
+			  }
 		  }
 
+		  // Assign bond dimensions to each string
+		  if (FieldExists(pars["Machine"], "BondDim")) {
+			  try {
+				  for (auto const &i: pars["Machine"]["BondDim"]) {
+					  Dstr_.push_back(i);
+				  }
+				  if (Dstr_.size() != M_) {
+					  throw InvalidInputError("Bond dimension list size incompatible with number of strings");
+				  }
+			  }
+			  catch (...) {
+				  // Assign the same bond dimension in all strings
+				  for (int i=0; i<M_; i++) {
+					  Dstr_.push_back(pars["Machine"]["BondDim"]);
+				  }
+			  }
+		  }
+		  else {
+			  throw InvalidInputError("Unspecified bond dimensions");
+		  }
+
+		  // Assign symmetry period to each string
+		  if (FieldExists(pars["Machine"], "SymmPeriod")) {
+			  try {
+				  temp_ind = 0;
+				  for (auto const &i: pars["Machine"]["SymmPeriod"]) {
+					  symperiod_.push_back(i);
+					  if (symperiod_.back() > Lstr_[temp_ind]) {
+						  throw InvalidInputError("Symmetry period larger than number of sites");
+					  }
+					  temp_ind++;
+				  }
+				  if (symperiod_.size() != M_) {
+					  throw InvalidInputError("Symmetry period list size incompatible with number of strings");
+				  }
+			  }
+			  catch (...) {
+				  // Assign the same bond dimension in all strings
+				  for (int i=0; i<M_; i++) {
+					  symperiod_.push_back(pars["Machine"]["SymmPeriod"]);
+					  if (symperiod_.back() > Lstr_[i]) {
+						  throw InvalidInputError("Symmetry period larger than number of sites");
+					  }
+				  }
+			  }
+		  }
+		  else {
+			  // Default symmetry period is no symmetry
+			  for (int i=0; i<M_; i++) {
+				  symperiod_.push_back(Lstr_[i]);
+			  }
+		  }
+
+		  // Assign diagonal flag to each string
 		  if (FieldExists(pars["Machine"], "Diagonal")) {
-			  diagonal_flag_ = pars["Machine"]["Diagonal"];
+			  try {
+				  for (auto const &i: pars["Machine"]["Diagonal"]) {
+					  diagonal_flag_.push_back(i);
+				  }
+				  if (Dstr_.size() != M_) {
+					  throw InvalidInputError("Diagonal list size incompatible with number of strings");
+				  }
+			  }
+			  catch (...) {
+				  // Assign the same flag in all strings
+				  for (int i=0; i<M_; i++) {
+					  symperiod_.push_back(pars["Machine"]["SymmPeriod"]);
+				  }
+			  }
 		  }
 		  else {
-			  // Use non-diagonal by default
-			  diagonal_flag_ = false;
+			  // Default flag is false
+			  for (int i=0; i<M_; i++) {
+				  symperiod_.push_back(false);
+			  }
 		  }
-
-		  AssignUserList(pars["Machine"], "BondDim", M_, D_);
-		  AssignUserList(pars["Machine"], "SymmPeriod", M_, symperiod_, Lstr_);
 
 		  Init();
 
@@ -390,73 +477,6 @@ namespace netket {
 		  //}
 		};
 
-		// Auxilliary function that assigns json listed list
-		inline std::vector<int> AssignVectorFromUser(const json &pars, const int &length) {
-			std::vector<int> list;
-			// If given SymmetryPeriod is a list, copy it to D_ variable:
-			try {
-				// Not sure about this loop and the type of pars
-				for (const int &i : pars) {
-					list.push_back(i);
-				}
-				
-			}
-			// Otherwise pars as integer and create D_ with the same BondDim for all sites
-			catch (...) {
-				for (int i=0; i<length; i++) {
-					list.push_back(pars);
-				}
-			}
-			return list;
-		};
-
-		inline void AssignUserList(const json &pars, const string &field_name, 
-								   const int &length, std::vector<int> &vector2assign,
-								   const int &default_value) {
-			
-			if (FieldExists(pars, field_name)) {
-				vector2assign = AssignVectorFromUser(pars[field_name], length);
-				if (vector2assign.size() != length) {
-					throw InvalidInputError("Given symmetry period list is incompatible with given string number");
-				}
-			}
-			else {
-				for (int i=0; i<length; i++) {
-					vector2assign.push_back(default_value);
-				}
-			}
-		};
-
-		inline void AssignUserList(const json &pars, const string &field_name, 
-								   const int &length, std::vector<int> &vector2assign,
-								   const std::vector<int> &default_value) {
-			
-			if (FieldExists(pars, field_name)) {
-				vector2assign = AssignVectorFromUser(pars[field_name], length);
-				if (vector2assign.size() != length) {
-					throw InvalidInputError("Given symmetry period list is incompatible with given string number");
-				}
-			}
-			else {
-				for (int i=0; i<length; i++) {
-					vector2assign.push_back(default_value[i]);
-				}
-			}
-		};
-
-		inline void AssignUserList(const json &pars, const string &field_name, 
-								   const int &length, std::vector<int> &vector2assign) {
-			
-			if (FieldExists(pars, field_name)) {
-				vector2assign = AssignVectorFromUser(pars[field_name], length);
-				if (vector2assign.size() != length) {
-					throw InvalidInputError("Given symmetry period list is incompatible with given string number");
-				}
-			}
-			else {
-				throw InvalidInputError("Unspecified " + field_name);
-			}
-		};
 	};
 
 } // namespace netket
