@@ -1,30 +1,18 @@
-### Currently working
-- Open MPS, versions with constant (*deprecated*) and vector D (`mps_open.hpp`).
-- Periodic MPS (`mps_periodic.hpp`) (might be *deprecated*)
-- Translation invariant periodic MPS with arbitrary symmetry period (`mps_translation.hpp`).
-- Diagonal MPS (`mps_diagonal.hpp`) - Same as `MPSTranslation` but matrices are diagonal and we use `cwiseProduct` instead of matrix product (a bit faster).
-- SBS (`sbs.hpp`).
+## MPSTranslation / MPSDiagonal
+#### Must specify
+- BondDim (`int`): Bond dimension of matrices (constant across the chain)
+#### Optional
+- Nspins (`int`): Number of spins in the chain. Must agree with Hilbert (default from Hilbert)
+- PhysDim (`int`): Physical dimension of system. Must agree with Hilbert (default from Hilbert)
+- SymmetryPeriod (`int`): Number of alternating MPS matrices (default is Nspins, resp. no translational symmetry)
 
-All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does not converge either.
+## MPSOpen
+#### Must specify
+- BondDim (`int`/`list`): Bond dimension of matrices.
+  - If `int` is given the same bond dimension is used in all matrices.
+  - If `list` is given the bond dimension of each matrix is assigned from this. Length must agree with Nspins.
+#### Optional
+- Nspins (`int`): Number of spins in the chain. Must agree with Hilbert (default from Hilbert)
+- PhysDim (`int`): Physical dimension of system. Must agree with Hilbert (default from Hilbert)
+- CanonicalForm (`bool`): Transform to canonical form after every update (default is false) (*not working*)
 
-#### Notes
-- `MPSTranslation` and `MPSDiagonal` are derived from `AbstractMPS`.
-- `MPSperiodic` is a special case of `MPSTranslation` with `symperiod_ = N`.
-- SBS uses `MPSTranslation` or `MPSDiagonal` (user selects) for MPS calculations.
-- User can give different bond dimensions for `MPSopen` as a python list of length N+1. If an integer is given it is treated as a constant bond dimension.
-- Loading W option is enabled for all except SBS and W should be given as a list of matrices (untested).
-
-### Implemented but not working
-- Canonical form in Open MPS (doesn't work in Python either).
-
-### Additions needed
-
-#### Physics related
-- Possible improvement of the lookups in all cases for the calculation of middle contractions. Currently we save only left and right contractions.
-- Setting for ordering of spins and how to put the strings into graph. Possible connection to graph object. Currently SBS cover the whole graph by default.
-
-#### Code related
-- Test weight loading and enable weight saving (incompatibilities with json format)
-- Currently SBS uses MPS classes for calculations, but each MPS function is defined twice in the class, once for pure MPS and once for SBS (incompatibility with `confindex_` calculation). It might be possible to combine some of these functions.
-- Use of lookups in the derivative (is this possible?). Currently we do the contractions from scratch in the `DerLog` functions.
-- Setting for different string lengths and bond dimensions in SBS. Code supports that but currently it is not controlled by user.
