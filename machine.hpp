@@ -25,7 +25,6 @@
 #include "rbm_multival.hpp"
 #include "rbm_spin.hpp"
 #include "rbm_spin_symm.hpp"
-#include "mps_periodic.hpp"
 #include "mps_open.hpp"
 #include "mps_translation.hpp"
 #include "mps_diagonal.hpp"
@@ -82,8 +81,6 @@ class Machine : public AbstractMachine<T> {
       m_ = Ptype(new RbmMultival<T>(hilbert, pars));
     } else if (pars["Machine"]["Name"] == "Jastrow") {
       m_ = Ptype(new Jastrow<T>(hilbert, pars));
-	} else if (pars["Machine"]["Name"] == "MPSperiodic") {
-	  m_ = Ptype(new MPSPeriodic<T>(hilbert, pars));
 	} else if (pars["Machine"]["Name"] == "MPSopen") {
 	  m_ = Ptype(new MPSOpen<T>(hilbert, pars));
 	} else if (pars["Machine"]["Name"] == "MPStranslation") {
@@ -141,7 +138,7 @@ class Machine : public AbstractMachine<T> {
 
     std::set<std::string> machines = {"RbmSpin", "RbmSpinSymm", "RbmMultival",
                                       "FFNN", "Jastrow", "JastrowSymm", 
-									  "MPSperiodic", "MPSopen", "MPStranslation", "MPSdiagonal", 
+									  "MPSopen", "MPStranslation", "MPSdiagonal", 
 									  "SBS"};
 
 
