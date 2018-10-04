@@ -31,29 +31,12 @@ namespace netket {
 		using StateType = T;
 		using LookupType = Lookup<T>;
 
-		//virtual int Npar() const override = 0;
-
-		//virtual VectorType GetParameters() override = 0;
-
-		//virtual void SetParameters(const VectorType &pars) override = 0;
-
 		// Auxiliary function used for setting initial random parameters and adding identities in every matrix
 		virtual inline void SetParametersIdentity(const VectorType &pars) = 0;
 		
-		//virtual void InitRandomPars(int seed, double sigma) override = 0;
-
-		//virtual int Nvisible() const override = 0;
-	
-		//virtual void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override = 0;
-
 		// For SBS use
 		virtual void InitLookup(const std::vector<int> &v, LookupType &lt, const int &start_ind) = 0;
 		
-		//virtual void UpdateLookup(const Eigen::VectorXd &v,
-		//	const std::vector<int> &tochange,
-		//	const std::vector<double> &newconf,
-		//	LookupType &lt) override = 0;
-
 		// For SBS use
 		virtual void UpdateLookup(const std::vector<int> &v,
 			const std::vector<int> &tochange,
@@ -61,18 +44,10 @@ namespace netket {
 			LookupType &lt,
 			const int &start_ind) = 0;
 	
-		//virtual T LogVal(const Eigen::VectorXd &v) override = 0;
-
 		// For SBS use
 		virtual T LogVal(const std::vector<int> &v) = 0;
 
-		//virtual T LogVal(const Eigen::VectorXd &v, const LookupType &lt) override = 0;
-
 		virtual inline T LogVal(const LookupType &lt, const int &start_ind) = 0;
-
-		//virtual VectorType LogValDiff(
-		//	const Eigen::VectorXd &v, const std::vector<std::vector<int>> &tochange,
-		//	const std::vector<std::vector<double>> &newconf) override = 0;
 		 
 		virtual T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
 			const std::vector<int> &newconf,
@@ -81,15 +56,13 @@ namespace netket {
 		// No (k and lookup)-dependent version for SBS use
 		virtual T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
 			const std::vector<int> &newconf) = 0;
-	
-		//virtual VectorType DerLog(const Eigen::VectorXd &v) override = 0;
 
+		// For SBS use in the case of one spin flip (it doesn't required to know v)
+		virtual T FastLogValDiff(const std::vector<int> &toflip, const std::vector<int> &newconf,
+			const LookupType &lt, const int &start_ind) = 0;
+	
 		// For SBS use
 		virtual VectorType DerLog(const std::vector<int> &v) = 0;
-
-		//virtual void to_json(json &j) const override = 0;
-
-		//virtual void from_json(const json &pars) override = 0;
 
 		virtual ~AbstractMPS() {}
 	
