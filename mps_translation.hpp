@@ -673,6 +673,33 @@ namespace netket {
 			return std::log(new_prods.trace() / lt.M(start_ind + 2 * N_ - 2).trace());
 		};
 
+		T FastLogValDiff(const std::vector<int> &toflip,
+			const std::vector<int> &newconf,
+			const LookupType &lt, const int &start_ind) override {
+
+			const std::size_t nflip = toflip.size();
+			if (nflip <= 0) {
+				return T(0, 0);
+			}
+
+			MatrixType new_prods(D_, D_);
+			int site = toflip[0];
+
+			if (site == 0) {
+				new_prods = W_[0][newconf[0]] * lt.M(start_ind + 2 * N_ - 3);
+			}
+			else if (site == N_ - 1) {
+				new_prods = lt.M(start_ind + 2 * N_ - 4) * W_[(N_ - 1) % symperiod_][newconf[0]];
+			}
+			else {
+				new_prods = lt.M(start_ind + 2 * (site - 1)) * W_[site % symperiod_][newconf[0]] * lt.M(start_ind + 2 * (N_ - site) - 3);
+			}
+
+			//InfoMessage() << "FastLogValDiff lookup ended " << std::log(new_prods.trace() / current_psi) << std::endl;
+
+			return std::log(new_prods.trace() / lt.M(start_ind + 2 * N_ - 2).trace());
+		};
+
 		VectorType DerLog(const std::vector<int> &v) override {
 			const int Dsq = D_ * D_;
 			//ComputeVtilde(v, vtilde_);
