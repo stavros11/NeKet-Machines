@@ -95,10 +95,8 @@ namespace netket {
 				confindex_[localstates[i]] = i;
 			}
 
-			// Default parameters initializations (may change these if we add additional setting options)
-			// 1) Initialize parameters Dstr_ and Lstr_ vector with the same user dimension and length for all strings
-			//	  Also initialize MPS objects with the correct dimensions and calculate npar_
-			//    currently all strings will cover the whole configuration (we have to change that with settings)
+			// Initialize MPS objects and npar_ with the correct dimensions and calculate npar_
+			// String properties are defined in from_json function
 			npar_ = 0;
 			for (int i = 0; i < M_; i++) {
 				if (diagonal_flag_[i]) {
@@ -112,14 +110,17 @@ namespace netket {
 				npar_ += strings_.back()->Npar();
 			}
 
-			// 2) Initialize site2string vector.
-			//    In the current default setting each site belongs to all strings
+			// Find site2string vector by reversing string2site (which was defined in from_json)
 			for (int site = 0; site < N_; site++) {
 				site2string_.push_back(pushback_vec2);
 				for (int i = 0; i < M_; i++) {
-					site2string_[site].push_back(two_component_vec);
-					site2string_[site][i][0] = i;
-					site2string_[site][i][1] = site;
+					for (int pos = 0; pos < string2site_[i].size(); pos++) {
+						if (site == string2site_[i][pos]) {
+							site2string_[site].push_back(two_component_vec);
+							site2string_[site].back()[0] = i;
+							site2string_[site].back()[1] = pos;
+						}
+					}
 				}
 			}
 
@@ -274,14 +275,14 @@ namespace netket {
 
 			for (auto const &ent : string_lists[0]) {
 				i = ent.first;
-				//if (string_lists[0][i].size() > 1) {
-				//	result += strings_[i]->LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
-				//}
-				//else if (string_lists[0][i].size() > 0) {
-				//	result += strings_[i]->FastLogValDiff(string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
-				//}
+				if (string_lists[0][i].size() > 1) {
+					result += strings_[i]->LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				}
+				else if (string_lists[0][i].size() > 0) {
+					result += strings_[i]->FastLogValDiff(string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				}
 
-				result += strings_[i]->LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
+				//result += strings_[i]->LogValDiff(extract(v, i), string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
 			}
 
 			//InfoMessage() << "LogValDiff looukup ended" << std::endl;
@@ -332,7 +333,7 @@ namespace netket {
 		  j["Machine"]["Name"] = "SBS";
 		  j["Machine"]["Nspins"] = N_;
 		  j["Machine"]["Strings"] = M_;
-		  j["Machine"]["BondDim"] = D_;
+		  j["Machine"]["BondDim"] = Dstr_;
 		  j["Machine"]["PhysDim"] = d_;
 		}; 
 
@@ -359,17 +360,18 @@ namespace netket {
 		  }
 
 		  // Assign sites to each string (string2site)
+		  Lstr_cumsum_.push_back(0);
 		  if (FieldExists(pars["Machine"], "StringSites")) {
-			  Lstr_cumsum_.push_back(0);
 			  M_ = 0;
+			  //InfoMessage() << "Check 1" << std::endl;
 			  for (auto const &i: pars["Machine"]["StringSites"]) {
 				   string2site_.push_back(empty_vector);
 				   temp_string_length = 0;
-				   for (auto const &j: pars["Machine"]["StringSites"]) {
+				   for (auto const &j: i) {
 					   string2site_.back().push_back(j);
 					   temp_string_length++;
 				   }
-				   Lstr_.push_back(temp_string_length)
+				   Lstr_.push_back(temp_string_length);
 				   Lstr_cumsum_.push_back(Lstr_cumsum_.back() + 2 * temp_string_length);
 				   M_++;
 			  }
@@ -384,7 +386,7 @@ namespace netket {
 							string2site_.back().push_back(j);
 						}
 				   		Lstr_.push_back(N_);
-				   		Lstr_cumsum_.push_back(Lstr_cumsum_.back() + 2 * temp_string_length);
+				   		Lstr_cumsum_.push_back(Lstr_cumsum_.back() + 2 * N_);
 			  	   }
 		  		}
 				else {
@@ -464,14 +466,14 @@ namespace netket {
 			  catch (...) {
 				  // Assign the same flag in all strings
 				  for (int i=0; i<M_; i++) {
-					  symperiod_.push_back(pars["Machine"]["SymmPeriod"]);
+					  diagonal_flag_.push_back(pars["Machine"]["Diagonal"]);
 				  }
 			  }
 		  }
 		  else {
 			  // Default flag is false
 			  for (int i=0; i<M_; i++) {
-				  symperiod_.push_back(false);
+				  diagonal_flag_.push_back(false);
 			  }
 		  }
 
