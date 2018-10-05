@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "Lookup/lookup.hpp"
+#include "Utils/all_utils.hpp"
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
-#include "Lookup/lookup.hpp"
-#include "Utils/all_utils.hpp"
 
 #ifndef NETKET_MPS_OPEN_HPP
 #define NETKET_MPS_OPEN_HPP
@@ -395,7 +395,7 @@ namespace netket {
 				lt.M(2 * site) = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[newconf[sorted_ind[k]]]];
 				//loc_lt[2 * site] = lt.M(2 * site);
 			}
-			for (int site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
+			for (site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
 				lt.M(2 * site) = lt.M(2 * (site - 1)) * W_[d_ * site + confindex_[v(site)]];
 				//loc_lt[2 * site] = lt.M(2 * site);
 			}
