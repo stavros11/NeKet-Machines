@@ -71,7 +71,7 @@ template <typename T> class SBS : public AbstractMachine<T> {
 
   const Hilbert &hilbert_;
 
-public:
+ public:
   using StateType = T;
   using LookupType = Lookup<T>;
 

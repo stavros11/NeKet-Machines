@@ -24,7 +24,7 @@
 namespace netket {
 
 template <typename T> class AbstractMPS : public AbstractMachine<T> {
-public:
+ public:
   using VectorType = typename AbstractMachine<T>::VectorType;
   using MatrixType = typename AbstractMachine<T>::MatrixType;
   using StateType = T;

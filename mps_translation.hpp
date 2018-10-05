@@ -47,7 +47,7 @@ template <typename T> class MPSTranslation : public AbstractMPS<T> {
 
   const Hilbert &hilbert_;
 
-public:
+ public:
   using StateType = T;
   using LookupType = Lookup<T>;
 
