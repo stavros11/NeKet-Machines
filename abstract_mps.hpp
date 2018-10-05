@@ -15,58 +15,60 @@
 #ifndef NETKET_ABSTRACT_MPS_HPP
 #define NETKET_ABSTRACT_MPS_HPP
 
+#include "Lookup/lookup.hpp"
+#include "Utils/all_utils.hpp"
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
-#include "Lookup/lookup.hpp"
-#include "Utils/all_utils.hpp"
 
 namespace netket {
 
-	template <typename T>
-	class AbstractMPS : public AbstractMachine<T> {
-	public:
-		using VectorType = typename AbstractMachine<T>::VectorType;
-		using MatrixType = typename AbstractMachine<T>::MatrixType;
-		using StateType = T;
-		using LookupType = Lookup<T>;
+template <typename T> class AbstractMPS : public AbstractMachine<T> {
+public:
+  using VectorType = typename AbstractMachine<T>::VectorType;
+  using MatrixType = typename AbstractMachine<T>::MatrixType;
+  using StateType = T;
+  using LookupType = Lookup<T>;
 
-		// Auxiliary function used for setting initial random parameters and adding identities in every matrix
-		virtual inline void SetParametersIdentity(const VectorType &pars) = 0;
-		
-		// For SBS use
-		virtual void InitLookup(const std::vector<int> &v, LookupType &lt, const int &start_ind) = 0;
-		
-		// For SBS use
-		virtual void UpdateLookup(const std::vector<int> &v,
-			const std::vector<int> &tochange,
-			const std::vector<int> &newconf,
-			LookupType &lt,
-			const int &start_ind) = 0;
-	
-		// For SBS use
-		virtual T LogVal(const std::vector<int> &v) = 0;
+  // Auxiliary function used for setting initial random parameters and adding
+  // identities in every matrix
+  virtual inline void SetParametersIdentity(const VectorType &pars) = 0;
 
-		virtual inline T LogVal(const LookupType &lt, const int &start_ind) = 0;
-		 
-		virtual T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
-			const std::vector<int> &newconf,
-			const LookupType &lt, const int &start_ind) = 0;
+  // For SBS use
+  virtual void InitLookup(const std::vector<int> &v, LookupType &lt,
+                          const int &start_ind) = 0;
 
-		// No (k and lookup)-dependent version for SBS use
-		virtual T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
-			const std::vector<int> &newconf) = 0;
+  // For SBS use
+  virtual void UpdateLookup(const std::vector<int> &v,
+                            const std::vector<int> &tochange,
+                            const std::vector<int> &newconf, LookupType &lt,
+                            const int &start_ind) = 0;
 
-		// For SBS use in the case of one spin flip (it doesn't required to know v)
-		virtual T FastLogValDiff(const std::vector<int> &toflip, const std::vector<int> &newconf,
-			const LookupType &lt, const int &start_ind) = 0;
-	
-		// For SBS use
-		virtual VectorType DerLog(const std::vector<int> &v) = 0;
+  // For SBS use
+  virtual T LogVal(const std::vector<int> &v) = 0;
 
-		virtual ~AbstractMPS() {}
-	
-	};
+  virtual inline T LogVal(const LookupType &lt, const int &start_ind) = 0;
+
+  virtual T LogValDiff(const std::vector<int> &v,
+                       const std::vector<int> &toflip,
+                       const std::vector<int> &newconf, const LookupType &lt,
+                       const int &start_ind) = 0;
+
+  // No (k and lookup)-dependent version for SBS use
+  virtual T LogValDiff(const std::vector<int> &v,
+                       const std::vector<int> &toflip,
+                       const std::vector<int> &newconf) = 0;
+
+  // For SBS use in the case of one spin flip (it doesn't required to know v)
+  virtual T FastLogValDiff(const std::vector<int> &toflip,
+                           const std::vector<int> &newconf,
+                           const LookupType &lt, const int &start_ind) = 0;
+
+  // For SBS use
+  virtual VectorType DerLog(const std::vector<int> &v) = 0;
+
+  virtual ~AbstractMPS() {}
+};
 } // namespace netket
 
 #endif
