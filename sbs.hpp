@@ -16,7 +16,7 @@
 #include "Utils/all_utils.hpp"
 #include "abstract_mps.hpp"
 #include "mps_diagonal.hpp"
-#include "mps_translation.hpp"
+#include "mps_periodic.hpp"
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
@@ -104,7 +104,7 @@ template <typename T> class SBS : public AbstractMachine<T> {
             new MPSDiagonal<T>(hilbert_, Lstr_[i], Dstr_[i], symperiod_[i])));
         Mdiag++;
       } else {
-        strings_.push_back(Ptype(new MPSTranslation<T>(
+        strings_.push_back(Ptype(new MPSPeriodic<T>(
             hilbert_, Lstr_[i], Dstr_[i], symperiod_[i])));
       }
 

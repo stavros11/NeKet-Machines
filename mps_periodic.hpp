@@ -19,12 +19,12 @@
 #include <iostream>
 #include <vector>
 
-#ifndef NETKET_MPS_TRANSLATION_HPP
-#define NETKET_MPS_TRANSLATION_HPP
+#ifndef NETKET_MPS_PERIODIC_HPP
+#define NETKET_MPS_PERIODIC_HPP
 
 namespace netket {
 
-template <typename T> class MPSTranslation : public AbstractMPS<T> {
+template <typename T> class MPSPeriodic : public AbstractMPS<T> {
   using VectorType = typename AbstractMPS<T>::VectorType;
   using MatrixType = typename AbstractMPS<T>::MatrixType;
 
@@ -52,13 +52,13 @@ template <typename T> class MPSTranslation : public AbstractMPS<T> {
   using LookupType = Lookup<T>;
 
   // constructor as a machine
-  explicit MPSTranslation(const Hilbert &hilbert, const json &pars)
+  explicit MPSPeriodic(const Hilbert &hilbert, const json &pars)
       : N_(hilbert.Size()), hilbert_(hilbert), d_(hilbert.LocalSize()) {
     from_json(pars);
   }
 
   // constructor for use in SBS machine
-  MPSTranslation(const Hilbert &hilbert, const int &N, const int &D,
+  MPSPeriodic(const Hilbert &hilbert, const int &N, const int &D,
                  const int &symperiod)
       : N_(N), d_(hilbert.LocalSize()), D_(D), hilbert_(hilbert),
         symperiod_(symperiod) {
@@ -463,7 +463,7 @@ template <typename T> class MPSTranslation : public AbstractMPS<T> {
   const Hilbert &GetHilbert() const { return hilbert_; };
 
   void to_json(json &j) const override {
-    j["Machine"]["Name"] = "MPStranslation";
+    j["Machine"]["Name"] = "MPSperiodic";
     j["Machine"]["Nspins"] = N_;
     j["Machine"]["BondDim"] = D_;
     j["Machine"]["PhysDim"] = d_;
@@ -472,7 +472,7 @@ template <typename T> class MPSTranslation : public AbstractMPS<T> {
   };
 
   void from_json(const json &pars) override {
-    if (pars.at("Machine").at("Name") != "MPStranslation") {
+    if (pars.at("Machine").at("Name") != "MPSperiodic") {
       throw InvalidInputError("Error while constructing MPS from Json input");
     }
 
