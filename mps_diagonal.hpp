@@ -24,7 +24,8 @@
 
 namespace netket {
 
-template <typename T> class MPSDiagonal : public AbstractMPS<T> {
+template <typename T>
+class MPSDiagonal : public AbstractMPS<T> {
   using VectorType = typename AbstractMPS<T>::VectorType;
   using MatrixType = typename AbstractMPS<T>::MatrixType;
 
@@ -60,7 +61,10 @@ template <typename T> class MPSDiagonal : public AbstractMPS<T> {
   // constructor for use in SBS machine
   MPSDiagonal(const Hilbert &hilbert, const int &N, const int &D,
               const int &symperiod)
-      : N_(N), d_(hilbert.LocalSize()), D_(D), hilbert_(hilbert),
+      : N_(N),
+        d_(hilbert.LocalSize()),
+        D_(D),
+        hilbert_(hilbert),
         symperiod_(symperiod) {
     Init(false);
   };
@@ -209,7 +213,6 @@ template <typename T> class MPSDiagonal : public AbstractMPS<T> {
   void UpdateLookup(const Eigen::VectorXd &v, const std::vector<int> &tochange,
                     const std::vector<double> &newconf,
                     LookupType &lt) override {
-
     std::size_t nchange = tochange.size();
     if (nchange <= 0) {
       return;
@@ -315,10 +318,9 @@ template <typename T> class MPSDiagonal : public AbstractMPS<T> {
     return std::log(lt.V(2 * N_ - 2).sum());
   };
 
-  VectorType
-  LogValDiff(const Eigen::VectorXd &v,
-             const std::vector<std::vector<int>> &tochange,
-             const std::vector<std::vector<double>> &newconf) override {
+  VectorType LogValDiff(
+      const Eigen::VectorXd &v, const std::vector<std::vector<int>> &tochange,
+      const std::vector<std::vector<double>> &newconf) override {
     const std::size_t nconn = tochange.size();
     int site = 0;
 
@@ -372,7 +374,6 @@ template <typename T> class MPSDiagonal : public AbstractMPS<T> {
   T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
                const std::vector<double> &newconf,
                const LookupType &lt) override {
-
     const std::size_t nflip = toflip.size();
     if (nflip <= 0) {
       return T(0, 0);
@@ -461,12 +462,17 @@ template <typename T> class MPSDiagonal : public AbstractMPS<T> {
     j["Machine"]["BondDim"] = D_;
     j["Machine"]["PhysDim"] = d_;
     j["Machine"]["SymmetryPeriod"] = symperiod_;
-    // j["Machine"]["W"] = {};
-    // for (int i = 0; i < symperiod_; i++) {
-    //	  for (int j = 0; j < d_; j++) {
-    //		  j["Machine"]["W"].append(W_[i][j]);
-    //	  }
-    //}
+	to_jsonWeights(j);
+  };
+
+  inline void to_jsonWeights(json &j) const {
+	  VectorType params(npar_);
+	  for (int i = 0; i < symperiod_; i++) {
+		  for (int j = 0; j < d_; j++) {
+			  params.segment((d_ * i + j) * D_, D_) = W_[i][j];
+		  }
+	  }
+	  j["Machine"]["W"] = params;
   };
 
   void from_json(const json &pars) override {
@@ -509,19 +515,26 @@ template <typename T> class MPSDiagonal : public AbstractMPS<T> {
 
     // Loading parameters, if defined in the input
     if (FieldExists(pars["Machine"], "W")) {
-      for (int i = 0; i < symperiod_; i++) {
-        for (int j = 0; j < d_; j++) {
-          W_[i][j] = pars["Machine"]["W"][d_ * i + j];
-        }
-      }
+		from_jsonWeights(pars, 0);
     }
+  };
+
+  // Used in SBS too
+  inline void from_jsonWeights(const json &pars, const int &seg_init) override {
+	  for (int i = 0; i < symperiod_; i++) {
+		  for (int j = 0; j < d_; j++) {
+			  for (int k = 0; k < D_; k++) {
+				  W_[i][j](k) = pars["Machine"]["W"][seg_init + (d_ * i + j) * D_ + k];
+			  }
+		  }
+	  }
   };
 
   // ###################################### //
   // ##### Functions for SBS use only ##### //
   // ###################################### //
   // We treat SBS differently for efficiency:
-  // Otherwise we would have to define a different confindex_ 
+  // Otherwise we would have to define a different confindex_
   // for each MPS string in the SBS
 
   void InitLookup(const std::vector<int> &v, LookupType &lt,
@@ -556,7 +569,6 @@ template <typename T> class MPSDiagonal : public AbstractMPS<T> {
   void UpdateLookup(const std::vector<int> &v, const std::vector<int> &tochange,
                     const std::vector<int> &newconf, LookupType &lt,
                     const int &start_ind) override {
-
     std::size_t nchange = tochange.size();
     if (nchange <= 0) {
       return;
@@ -700,7 +712,6 @@ template <typename T> class MPSDiagonal : public AbstractMPS<T> {
   T LogValDiff(const std::vector<int> &v, const std::vector<int> &toflip,
                const std::vector<int> &newconf, const LookupType &lt,
                const int &start_ind) override {
-
     const std::size_t nflip = toflip.size();
     if (nflip <= 0) {
       return T(0, 0);
@@ -740,7 +751,6 @@ template <typename T> class MPSDiagonal : public AbstractMPS<T> {
   T FastLogValDiff(const std::vector<int> &toflip,
                    const std::vector<int> &newconf, const LookupType &lt,
                    const int &start_ind) override {
-
     const std::size_t nflip = toflip.size();
     if (nflip <= 0) {
       return T(0, 0);
@@ -803,6 +813,6 @@ template <typename T> class MPSDiagonal : public AbstractMPS<T> {
   };
 };
 
-} // namespace netket
+}  // namespace netket
 
 #endif

@@ -67,6 +67,8 @@ template <typename T> class AbstractMPS : public AbstractMachine<T> {
   // For SBS use
   virtual VectorType DerLog(const std::vector<int> &v) = 0;
 
+  virtual inline void from_jsonWeights(const json &pars, const int &seg_init) = 0;
+
   virtual ~AbstractMPS() {}
 };
 } // namespace netket
