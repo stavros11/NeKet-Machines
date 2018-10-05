@@ -473,12 +473,16 @@ class MPSPeriodic : public AbstractMPS<T> {
   };
 
   void to_jsonWeights(json &j) const {
-	  const int Dsq = D_ * D_;
 	  VectorType params(npar_);
-
+	  int n = 0;
 	  for (int i = 0; i < symperiod_; i++) {
 		  for (int j = 0; j < d_; j++) {
-			  params.segment((d_ * i + j) * Dsq, Dsq) = W_[i][j];
+			  for (int k = 0; k < D_; k++) {
+				  for (int l = 0; l < D_; l++) {
+					  params(n) = W_[i][j](k, l);
+					  n++;
+				  }
+			  }
 		  }
 	  }
 	  j["Machine"]["W"] = params;
@@ -550,6 +554,7 @@ class MPSPeriodic : public AbstractMPS<T> {
   // We treat SBS differently for efficiency:
   // Otherwise we would have to define a different confindex_ 
   // for each MPS string in the SBS
+ 
 
   void InitLookup(const std::vector<int> &v, LookupType &lt,
                   const int &start_ind) override {
