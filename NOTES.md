@@ -1,4 +1,4 @@
-**WARNING:** The machines fail one unit test, the real test for `DerLog`. The imaginary part seems to have no problems and they seem to converge to the correct energies for small (`N<10`) 1D Ising and Heisenberg Hamiltonians. I am not sure where the unit test comes from - in my computer also the Jastrow machines fail the same test.
+**WARNING: The machines fail one unit test**, the real test for `DerLog`. The imaginary part seems to have no problems and they seem to converge to the correct energies for small (`N<10`) 1D Ising and Heisenberg Hamiltonians. I am not sure where the unit test comes from - in my computer also the Jastrow machines fail the same test.
 
 The uploaded files are the following:
 - `mps_periodic.hpp`: Implements a periodic MPS machine where all matrices are square with the same (bond) dimension given by user. It is possible to set translational symmetry (same set of matrices repeated across the chain).
