@@ -1,9 +1,9 @@
 ### Currently working
 #### Final
-- Open MPS with vector D (`mps_open.hpp`).
-- Translation invariant periodic MPS with arbitrary symmetry period (`mps_periodic.hpp`).
-- Diagonal MPS (`mps_diagonal.hpp`) - Same as `MPSTranslation` but matrices are diagonal and we use `cwiseProduct` instead of matrix product (possibly a bit faster).
-- SBS (`sbs.hpp`).
+- `mps_open.hpp`: Open MPS with vector D.
+- `mps_periodic.hpp`: Translation invariant periodic MPS with arbitrary symmetry period.
+- `mps_diagonal.hpp`: Diagonal MPS (Same as `MPSTranslation` but matrices are diagonal and we use `cwiseProduct` instead of matrix product - possibly a bit faster).
+- `sbs.hpp`: SBS.
 
 All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does not converge either.
 
@@ -26,7 +26,9 @@ All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does 
   - Would it help to connect to the `graph` object within C++?
 
 #### Code related
-- Test weight loading and enable weight saving (incompatibilities with json format)
-- Currently SBS uses MPS classes for calculations, but each MPS function is defined twice in the class, once for pure MPS and once for SBS (incompatibility with `confindex_` calculation). It might be possible to combine some of these functions.
-- Use of lookups in the derivative (is this possible?). Currently we do the contractions from scratch in the `DerLog` functions.
-- Setting for different string lengths and bond dimensions in SBS. Code supports that but currently it is not controlled by user.
+- [ ] Test weight loading and enable weight saving (incompatibilities with json format)
+- [ ] Currently SBS uses MPS classes for calculations, but each MPS function is defined twice in the class, once for pure MPS and once for SBS . It might be possible to combine some of these functions.
+  - Incompatibility with `confindex_` calculation. It might be less efficient to combine, but possibly negligible difference.
+- [ ] Use of lookups in the derivative (is this possible?). Currently we do the contractions from scratch in the `DerLog` functions.
+  - Easy fix requires editing the VMC part of the code.
+- [x] Setting for different string lengths and bond dimensions in SBS.
