@@ -683,7 +683,7 @@ class MPSOpen : public AbstractMachine<T> {
 
   void to_json(json &j) const override {
     j["Machine"]["Name"] = "MPSopen";
-    j["Machine"]["Nspins"] = N_;
+    j["Machine"]["Nsites"] = N_;
     j["Machine"]["BondDim"] = D_;
     j["Machine"]["PhysDim"] = d_;
     j["Machine"]["CanonicalForm"] = canonicalform_;
@@ -695,8 +695,8 @@ class MPSOpen : public AbstractMachine<T> {
       throw InvalidInputError("Error while constructing MPS from Json input");
     }
 
-    if (FieldExists(pars["Machine"], "Nspins")) {
-      N_ = pars["Machine"]["Nspins"];
+    if (FieldExists(pars["Machine"], "Nsites")) {
+      N_ = pars["Machine"]["Nsites"];
     }
     if (N_ != hilbert_.Size()) {
       throw InvalidInputError(

@@ -345,7 +345,7 @@ class SBS : public AbstractMachine<T> {
     VectorType params(npar_);
 
     j["Machine"]["Name"] = "SBS";
-    j["Machine"]["Nspins"] = N_;
+    j["Machine"]["Nsites"] = N_;
     j["Machine"]["Strings"] = M_;
     j["Machine"]["BondDim"] = Dstr_;
     j["Machine"]["PhysDim"] = d_;
@@ -364,8 +364,8 @@ class SBS : public AbstractMachine<T> {
       throw InvalidInputError("Error while constructing SBS from Json input");
     }
 
-    if (FieldExists(pars["Machine"], "Nspins")) {
-      N_ = pars["Machine"]["Nspins"];
+    if (FieldExists(pars["Machine"], "Nsites")) {
+      N_ = pars["Machine"]["Nsites"];
     }
     if (N_ != hilbert_.Size()) {
       throw InvalidInputError(
