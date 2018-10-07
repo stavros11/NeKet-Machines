@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "Lookup/lookup.hpp"
-#include "Utils/all_utils.hpp"
-#include "abstract_mps.hpp"
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
+#include "Lookup/lookup.hpp"
+#include "Utils/all_utils.hpp"
+#include "abstract_mps.hpp"
 
 #ifndef NETKET_MPS_PERIODIC_HPP
 #define NETKET_MPS_PERIODIC_HPP
@@ -469,23 +469,23 @@ class MPSPeriodic : public AbstractMPS<T> {
     j["Machine"]["BondDim"] = D_;
     j["Machine"]["PhysDim"] = d_;
     j["Machine"]["SymmetryPeriod"] = symperiod_;
-	to_jsonWeights(j);
+    to_jsonWeights(j);
   };
 
   void to_jsonWeights(json &j) const {
-	  VectorType params(npar_);
-	  int n = 0;
-	  for (int i = 0; i < symperiod_; i++) {
-		  for (int j = 0; j < d_; j++) {
-			  for (int k = 0; k < D_; k++) {
-				  for (int l = 0; l < D_; l++) {
-					  params(n) = W_[i][j](k, l);
-					  n++;
-				  }
-			  }
-		  }
-	  }
-	  j["Machine"]["W"] = params;
+    VectorType params(npar_);
+    int n = 0;
+    for (int i = 0; i < symperiod_; i++) {
+      for (int j = 0; j < d_; j++) {
+        for (int k = 0; k < D_; k++) {
+          for (int l = 0; l < D_; l++) {
+            params(n) = W_[i][j](k, l);
+            n++;
+          }
+        }
+      }
+    }
+    j["Machine"]["W"] = params;
   }
 
   void from_json(const json &pars) override {
@@ -528,33 +528,32 @@ class MPSPeriodic : public AbstractMPS<T> {
 
     // Loading parameters, if defined in the input
     if (FieldExists(pars["Machine"], "W")) {
-		from_jsonWeights(pars, 0);
+      from_jsonWeights(pars, 0);
     }
   };
 
   // Used in SBS too
   inline void from_jsonWeights(const json &pars, const int &seg_init) override {
-	  const int Dsq = D_ * D_;
+    const int Dsq = D_ * D_;
 
-	  for (int i = 0; i < symperiod_; i++) {
-		  for (int j = 0; j < d_; j++) {
-			  for (int k = 0; k < D_; k++) {
-				  for (int l = 0; l < D_; l++) {
-					  W_[i][j](k, l) =
-						  pars["Machine"]["W"][seg_init + (d_ * i + j) * Dsq + D_ * k + l];
-				  }
-			  }
-		  }
-	  }
+    for (int i = 0; i < symperiod_; i++) {
+      for (int j = 0; j < d_; j++) {
+        for (int k = 0; k < D_; k++) {
+          for (int l = 0; l < D_; l++) {
+            W_[i][j](k, l) = pars["Machine"]["W"]
+                                 [seg_init + (d_ * i + j) * Dsq + D_ * k + l];
+          }
+        }
+      }
+    }
   }
 
   // ###################################### //
   // ##### Functions for SBS use only ##### //
   // ###################################### //
   // We treat SBS differently for efficiency:
-  // Otherwise we would have to define a different confindex_ 
+  // Otherwise we would have to define a different confindex_
   // for each MPS string in the SBS
- 
 
   void InitLookup(const std::vector<int> &v, LookupType &lt,
                   const int &start_ind) override {

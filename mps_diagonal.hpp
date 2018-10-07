@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "Lookup/lookup.hpp"
-#include "Utils/all_utils.hpp"
-#include "abstract_mps.hpp"
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
+#include "Lookup/lookup.hpp"
+#include "Utils/all_utils.hpp"
+#include "abstract_mps.hpp"
 
 #ifndef NETKET_MPS_DIAGONAL_HPP
 #define NETKET_MPS_DIAGONAL_HPP
@@ -462,17 +462,17 @@ class MPSDiagonal : public AbstractMPS<T> {
     j["Machine"]["BondDim"] = D_;
     j["Machine"]["PhysDim"] = d_;
     j["Machine"]["SymmetryPeriod"] = symperiod_;
-	to_jsonWeights(j);
+    to_jsonWeights(j);
   };
 
   inline void to_jsonWeights(json &j) const {
-	  VectorType params(npar_);
-	  for (int i = 0; i < symperiod_; i++) {
-		  for (int j = 0; j < d_; j++) {
-			  params.segment((d_ * i + j) * D_, D_) = W_[i][j];
-		  }
-	  }
-	  j["Machine"]["W"] = params;
+    VectorType params(npar_);
+    for (int i = 0; i < symperiod_; i++) {
+      for (int j = 0; j < d_; j++) {
+        params.segment((d_ * i + j) * D_, D_) = W_[i][j];
+      }
+    }
+    j["Machine"]["W"] = params;
   };
 
   void from_json(const json &pars) override {
@@ -515,19 +515,19 @@ class MPSDiagonal : public AbstractMPS<T> {
 
     // Loading parameters, if defined in the input
     if (FieldExists(pars["Machine"], "W")) {
-		from_jsonWeights(pars, 0);
+      from_jsonWeights(pars, 0);
     }
   };
 
   // Used in SBS too
   inline void from_jsonWeights(const json &pars, const int &seg_init) override {
-	  for (int i = 0; i < symperiod_; i++) {
-		  for (int j = 0; j < d_; j++) {
-			  for (int k = 0; k < D_; k++) {
-				  W_[i][j](k) = pars["Machine"]["W"][seg_init + (d_ * i + j) * D_ + k];
-			  }
-		  }
-	  }
+    for (int i = 0; i < symperiod_; i++) {
+      for (int j = 0; j < d_; j++) {
+        for (int k = 0; k < D_; k++) {
+          W_[i][j](k) = pars["Machine"]["W"][seg_init + (d_ * i + j) * D_ + k];
+        }
+      }
+    }
   };
 
   // ###################################### //

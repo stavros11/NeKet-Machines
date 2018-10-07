@@ -12,21 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <Eigen/Dense>
+#include <iostream>
+#include <vector>
 #include "Lookup/lookup.hpp"
 #include "Utils/all_utils.hpp"
 #include "abstract_mps.hpp"
 #include "mps_diagonal.hpp"
 #include "mps_periodic.hpp"
-#include <Eigen/Dense>
-#include <iostream>
-#include <vector>
 
 #ifndef NETKET_SBS_HPP
 #define NETKET_SBS_HPP
 
 namespace netket {
 
-template <typename T> class SBS : public AbstractMachine<T> {
+template <typename T>
+class SBS : public AbstractMachine<T> {
   using VectorType = typename AbstractMachine<T>::VectorType;
   using MatrixType = typename AbstractMachine<T>::MatrixType;
   using Ptype = std::unique_ptr<AbstractMPS<T>>;
@@ -104,8 +105,8 @@ template <typename T> class SBS : public AbstractMachine<T> {
             new MPSDiagonal<T>(hilbert_, Lstr_[i], Dstr_[i], symperiod_[i])));
         Mdiag++;
       } else {
-        strings_.push_back(Ptype(new MPSPeriodic<T>(
-            hilbert_, Lstr_[i], Dstr_[i], symperiod_[i])));
+        strings_.push_back(Ptype(
+            new MPSPeriodic<T>(hilbert_, Lstr_[i], Dstr_[i], symperiod_[i])));
       }
 
       npar_ += strings_.back()->Npar();
@@ -195,7 +196,6 @@ template <typename T> class SBS : public AbstractMachine<T> {
                     const std::vector<double> &newconf,
                     LookupType &lt) override {
     if (tochange.size() > 0) {
-
       int i;
       std::vector<std::map<int, std::vector<int>>> string_lists =
           tochange4string(tochange, newconf);
@@ -234,11 +234,9 @@ template <typename T> class SBS : public AbstractMachine<T> {
     return s;
   };
 
-  VectorType
-  LogValDiff(const Eigen::VectorXd &v,
-             const std::vector<std::vector<int>> &tochange,
-             const std::vector<std::vector<double>> &newconf) override {
-
+  VectorType LogValDiff(
+      const Eigen::VectorXd &v, const std::vector<std::vector<int>> &tochange,
+      const std::vector<std::vector<double>> &newconf) override {
     // InfoMessage() << "LogValDiff full called" << std::endl;
 
     const std::size_t nconn = tochange.size();
@@ -271,7 +269,6 @@ template <typename T> class SBS : public AbstractMachine<T> {
   T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
                const std::vector<double> &newconf,
                const LookupType &lt) override {
-
     // InfoMessage() << "LogValDiff lookup called" << std::endl;
 
     std::size_t nflip = toflip.size();
@@ -305,10 +302,8 @@ template <typename T> class SBS : public AbstractMachine<T> {
   };
 
   // Auxiliary function that gives the tochange and newconf maps for each string
-  inline std::vector<std::map<int, std::vector<int>>>
-  tochange4string(const std::vector<int> &tochange,
-                  const std::vector<double> &newconf) {
-
+  inline std::vector<std::map<int, std::vector<int>>> tochange4string(
+      const std::vector<int> &tochange, const std::vector<double> &newconf) {
     int site, string_nr;
     std::vector<std::map<int, std::vector<int>>> results;
     std::map<int, std::vector<int>> string_tochange, string_newconf;
@@ -346,18 +341,19 @@ template <typename T> class SBS : public AbstractMachine<T> {
   const Hilbert &GetHilbert() const { return hilbert_; };
 
   void to_json(json &j) const override {
-	  int seg_init = 0;
-	  VectorType params(npar_);
+    int seg_init = 0;
+    VectorType params(npar_);
 
     j["Machine"]["Name"] = "SBS";
     j["Machine"]["Nspins"] = N_;
     j["Machine"]["Strings"] = M_;
     j["Machine"]["BondDim"] = Dstr_;
     j["Machine"]["PhysDim"] = d_;
-	for (int i = 0; i < M_; i++) {
-		params.segment(seg_init, strings_[i]->Npar()) = strings_[i]->GetParameters();
-	}
-	j["Machine"]["W"] = params;
+    for (int i = 0; i < M_; i++) {
+      params.segment(seg_init, strings_[i]->Npar()) =
+          strings_[i]->GetParameters();
+    }
+    j["Machine"]["W"] = params;
   };
 
   void from_json(const json &pars) override {
@@ -420,8 +416,9 @@ template <typename T> class SBS : public AbstractMachine<T> {
 
     if (FieldExists(pars["Machine"], "Strings")) {
       if (pars["Machine"]["Strings"] != M_) {
-        throw InvalidInputError("Given number of strings is incompatible with "
-                                "site to string distribution");
+        throw InvalidInputError(
+            "Given number of strings is incompatible with "
+            "site to string distribution");
       }
     }
 
@@ -505,15 +502,15 @@ template <typename T> class SBS : public AbstractMachine<T> {
 
     // Loading parameters, if defined in the input
     if (FieldExists(pars["Machine"], "W")) {
-		int seg_init = 0;
-		for (int i = 0; i < M_; i++) {
-			strings_[i]->from_jsonWeights(pars, seg_init);
-			seg_init += strings_[i]->Npar();
-		}
-	}
+      int seg_init = 0;
+      for (int i = 0; i < M_; i++) {
+        strings_[i]->from_jsonWeights(pars, seg_init);
+        seg_init += strings_[i]->Npar();
+      }
+    }
   };
 };
 
-} // namespace netket
+}  // namespace netket
 
 #endif

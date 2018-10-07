@@ -15,15 +15,16 @@
 #ifndef NETKET_ABSTRACT_MPS_HPP
 #define NETKET_ABSTRACT_MPS_HPP
 
-#include "Lookup/lookup.hpp"
-#include "Utils/all_utils.hpp"
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
+#include "Lookup/lookup.hpp"
+#include "Utils/all_utils.hpp"
 
 namespace netket {
 
-template <typename T> class AbstractMPS : public AbstractMachine<T> {
+template <typename T>
+class AbstractMPS : public AbstractMachine<T> {
  public:
   using VectorType = typename AbstractMachine<T>::VectorType;
   using MatrixType = typename AbstractMachine<T>::MatrixType;
@@ -67,10 +68,11 @@ template <typename T> class AbstractMPS : public AbstractMachine<T> {
   // For SBS use
   virtual VectorType DerLog(const std::vector<int> &v) = 0;
 
-  virtual inline void from_jsonWeights(const json &pars, const int &seg_init) = 0;
+  virtual inline void from_jsonWeights(const json &pars,
+                                       const int &seg_init) = 0;
 
   virtual ~AbstractMPS() {}
 };
-} // namespace netket
+}  // namespace netket
 
 #endif
