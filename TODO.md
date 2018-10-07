@@ -2,14 +2,14 @@
 #### Final
 - `mps_open.hpp`: Open MPS with vector D.
 - `mps_periodic.hpp`: Translation invariant periodic MPS with arbitrary symmetry period.
-- `mps_diagonal.hpp`: Diagonal MPS (Same as `MPSTranslation` but matrices are diagonal and we use `cwiseProduct` instead of matrix product - possibly a bit faster).
+- `mps_diagonal.hpp`: Diagonal MPS (Same as `MPSPeriodic` but matrices are diagonal and we use `cwiseProduct` instead of matrix product - possibly a bit faster).
 - `sbs.hpp`: SBS.
 
 All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does not converge either.
 
 #### Dependencies
-- `MPSTranslation` and `MPSDiagonal` are derived from `AbstractMPS`.
-- SBS uses `MPSTranslation` or `MPSDiagonal` (user selects) for MPS calculations.
+- `MPSPeriodic` and `MPSDiagonal` are derived from `AbstractMPS`.
+- SBS uses `MPSPeriodic` or `MPSDiagonal` (user selects) for MPS calculations.
 
 #### Deprecated
 - Open MPS with constant D. Keep the vector D version.
