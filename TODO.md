@@ -1,27 +1,29 @@
 ### Currently working
-- Open MPS, versions with constant (*deprecated*) and vector D (`mps_open.hpp`).
-- Periodic MPS (`mps_periodic.hpp`) (might be *deprecated*)
-- Translation invariant periodic MPS with arbitrary symmetry period (`mps_translation.hpp`).
-- Diagonal MPS (`mps_diagonal.hpp`) - Same as `MPSTranslation` but matrices are diagonal and we use `cwiseProduct` instead of matrix product (a bit faster).
+#### Final
+- Open MPS with vector D (`mps_open.hpp`).
+- Translation invariant periodic MPS with arbitrary symmetry period (`mps_periodic.hpp`).
+- Diagonal MPS (`mps_diagonal.hpp`) - Same as `MPSTranslation` but matrices are diagonal and we use `cwiseProduct` instead of matrix product (possibly a bit faster).
 - SBS (`sbs.hpp`).
 
 All tested in 1D Ising and Heisenberg. Not sure about BoseHubbard1D as RBM does not converge either.
 
-#### Notes
+#### Dependencies
 - `MPSTranslation` and `MPSDiagonal` are derived from `AbstractMPS`.
-- `MPSperiodic` is a special case of `MPSTranslation` with `symperiod_ = N`.
 - SBS uses `MPSTranslation` or `MPSDiagonal` (user selects) for MPS calculations.
-- User can give different bond dimensions for `MPSopen` as a python list of length N+1. If an integer is given it is treated as a constant bond dimension.
-- Loading W option is enabled for all except SBS and W should be given as a list of matrices (untested).
 
-### Implemented but not working
-- Canonical form in Open MPS (doesn't work in Python either).
+#### Deprecated
+- Open MPS with constant D. Keep the vector D version.
+- Periodic MPS. Keep the translational symmetric version and set `symmperiod_=N_`.
 
 ### Additions needed
 
 #### Physics related
-- Possible improvement of the lookups in all cases for the calculation of middle contractions. Currently we save only left and right contractions.
-- Setting for ordering of spins and how to put the strings into graph. Possible connection to graph object. Currently SBS cover the whole graph by default.
+- [ ] Canonical form in Open MPS (doesn't work in the Python code either).
+- [ ] Possible improvement of the lookups in all cases for the calculation of middle contractions. Currently we save only left and right contractions. Not sure if saving middle contractions will improve efficiency.
+- [x] Setting for ordering of spins and how to put the strings into graph. Possible connection to graph object.
+  - Currently implemented with the user **explicitly** giving the site distribution in strings in the json.
+  - Easy improvement using a Python wrapper.
+  - Would it help to connect to the `graph` object within C++?
 
 #### Code related
 - Test weight loading and enable weight saving (incompatibilities with json format)
