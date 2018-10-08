@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// by S. Efthymiou, October 2018
 
 #include <Eigen/Dense>
 #include <iostream>
@@ -65,11 +67,6 @@ class SBS : public AbstractMachine<T> {
   // Vector that stores the MPS object for each string
   std::vector<Ptype> strings_;
 
-  // Local lookup matrices
-  // std::vector<MatrixType> loc_lt;
-  // Local vectors to transform {-1, 1} to {0, 1}
-  // Eigen::VectorXd vtilde_;
-
   const Hilbert &hilbert_;
 
  public:
@@ -112,8 +109,7 @@ class SBS : public AbstractMachine<T> {
       npar_ += strings_.back()->Npar();
     }
 
-    // Find site2string vector by reversing string2site (which was defined in
-    // from_json)
+    // Find site2string vector by reversing string2site (defined in json)
     for (int site = 0; site < N_; site++) {
       site2string_.push_back(pushback_vec2);
       for (int i = 0; i < M_; i++) {
@@ -196,12 +192,11 @@ class SBS : public AbstractMachine<T> {
                     const std::vector<double> &newconf,
                     LookupType &lt) override {
     if (tochange.size() > 0) {
-      int i;
       std::vector<std::map<int, std::vector<int>>> string_lists =
           tochange4string(tochange, newconf);
 
       for (auto const &ent : string_lists[0]) {
-        i = ent.first;
+        int i = ent.first;
         strings_[i]->UpdateLookup(extract(v, i), string_lists[0][i],
                                   string_lists[1][i], lt, Lstr_cumsum_[i]);
       }
@@ -209,7 +204,7 @@ class SBS : public AbstractMachine<T> {
   };
 
   // Auxiliary function that takes v and returns the visible vector for the
-  // string
+  // corresponding string
   inline std::vector<int> extract(const Eigen::VectorXd &v, const int string) {
     std::vector<int> x;
     for (int i = 0; i < Lstr_[string]; i++) {
@@ -237,32 +232,24 @@ class SBS : public AbstractMachine<T> {
   VectorType LogValDiff(
       const Eigen::VectorXd &v, const std::vector<std::vector<int>> &tochange,
       const std::vector<std::vector<double>> &newconf) override {
-    // InfoMessage() << "LogValDiff full called" << std::endl;
-
     const std::size_t nconn = tochange.size();
     if (nconn <= 0) {
       return VectorType::Zero(nconn);
     }
-
-    int i;
-    std::size_t nchange;
     VectorType logvaldiffs = VectorType::Zero(nconn);
     std::vector<std::map<int, std::vector<int>>> string_lists;
 
     for (std::size_t k = 0; k < nconn; k++) {
-      nchange = tochange[k].size();
+      std::size_t nchange = tochange[k].size();
       if (nchange > 0) {
         string_lists = tochange4string(tochange[k], newconf[k]);
         for (auto const &ent : string_lists[0]) {
-          i = ent.first;
+          int i = ent.first;
           logvaldiffs(k) += strings_[i]->LogValDiff(
               extract(v, i), string_lists[0][i], string_lists[1][i]);
         }
       }
     }
-
-    // InfoMessage() << "LogValDiff full ended" << std::endl;
-
     return logvaldiffs;
   };
 
@@ -276,13 +263,12 @@ class SBS : public AbstractMachine<T> {
       return T(0, 0);
     }
 
-    int i;
     T result = T(0, 0);
     std::vector<std::map<int, std::vector<int>>> string_lists =
         tochange4string(toflip, newconf);
 
     for (auto const &ent : string_lists[0]) {
-      i = ent.first;
+      int i = ent.first;
       if (string_lists[0][i].size() > 1) {
         result +=
             strings_[i]->LogValDiff(extract(v, i), string_lists[0][i],
@@ -291,29 +277,22 @@ class SBS : public AbstractMachine<T> {
         result += strings_[i]->FastLogValDiff(
             string_lists[0][i], string_lists[1][i], lt, Lstr_cumsum_[i]);
       }
-
-      // result += strings_[i]->LogValDiff(extract(v, i), string_lists[0][i],
-      // string_lists[1][i], lt, Lstr_cumsum_[i]);
     }
-
-    // InfoMessage() << "LogValDiff looukup ended" << std::endl;
-
     return result;
   };
 
   // Auxiliary function that gives the tochange and newconf maps for each string
   inline std::vector<std::map<int, std::vector<int>>> tochange4string(
       const std::vector<int> &tochange, const std::vector<double> &newconf) {
-    int site, string_nr;
     std::vector<std::map<int, std::vector<int>>> results;
     std::map<int, std::vector<int>> string_tochange, string_newconf;
 
     for (std::size_t j = 0; j < tochange.size(); j++) {
-      site = tochange[j];
+      int site = tochange[j];
       // For each site in toflip find the strings it belongs. Save the
       // corresponding positions:
       for (int i = 0; i < site2string_[site].size(); i++) {
-        string_nr = site2string_[site][i][0];
+        int string_nr = site2string_[site][i][0];
         string_tochange[string_nr].push_back(site2string_[site][i][1]);
         string_newconf[string_nr].push_back(confindex_[newconf[j]]);
       }
@@ -341,7 +320,6 @@ class SBS : public AbstractMachine<T> {
   const Hilbert &GetHilbert() const { return hilbert_; };
 
   void to_json(json &j) const override {
-    int seg_init = 0;
     VectorType params(npar_);
 
     j["Machine"]["Name"] = "SBS";
@@ -349,16 +327,16 @@ class SBS : public AbstractMachine<T> {
     j["Machine"]["Strings"] = M_;
     j["Machine"]["BondDim"] = Dstr_;
     j["Machine"]["PhysDim"] = d_;
+    j["Machine"]["StringW"] = {};
     for (int i = 0; i < M_; i++) {
-      params.segment(seg_init, strings_[i]->Npar()) =
-          strings_[i]->GetParameters();
+      json stringpar;
+      strings_[i]->to_jsonWeights(stringpar);
+      j["Machine"]["StringW"].push_back(stringpar);
     }
-    j["Machine"]["W"] = params;
   };
 
   void from_json(const json &pars) override {
     std::vector<int> empty_vector;
-    int temp_string_length = 0, temp_ind = 0;
 
     if (pars.at("Machine").at("Name") != "SBS") {
       throw InvalidInputError("Error while constructing SBS from Json input");
@@ -387,7 +365,7 @@ class SBS : public AbstractMachine<T> {
       // InfoMessage() << "Check 1" << std::endl;
       for (auto const &i : pars["Machine"]["StringSites"]) {
         string2site_.push_back(empty_vector);
-        temp_string_length = 0;
+        int temp_string_length = 0;
         for (auto const &j : i) {
           string2site_.back().push_back(j);
           temp_string_length++;
@@ -445,7 +423,7 @@ class SBS : public AbstractMachine<T> {
     // Assign symmetry period to each string
     if (FieldExists(pars["Machine"], "SymmPeriod")) {
       try {
-        temp_ind = 0;
+        int temp_ind = 0;
         for (auto const &i : pars["Machine"]["SymmPeriod"]) {
           symperiod_.push_back(i);
           if (symperiod_.back() > Lstr_[temp_ind]) {
@@ -502,14 +480,14 @@ class SBS : public AbstractMachine<T> {
 
     // Loading parameters, if defined in the input
     if (FieldExists(pars["Machine"], "W")) {
-      int seg_init = 0;
-      for (int i = 0; i < M_; i++) {
-        strings_[i]->from_jsonWeights(pars, seg_init);
-        seg_init += strings_[i]->Npar();
+      int ii = 0;
+      for (auto const &params : pars["Machine"]["StringW"]) {
+        strings_[ii]->from_jsonWeights(params);
+        ii++;
       }
     }
   };
-};
+};  // namespace netket
 
 }  // namespace netket
 
