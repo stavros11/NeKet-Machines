@@ -7,16 +7,6 @@ MPSdiagonal is a case of MPSperiodic where matrices are diagonal and uses `cwise
 - **PhysDim** (`int`): Physical dimension of system. Must agree with Hilbert. *Default:* Hilbert
 - **SymmetryPeriod** (`int`): Number of different MPS matrices. Must be a divisor of Nspins. *Default:* Nspins (no symmetry)
 
-## Machine Name: MPSopen
-#### Must specify
-- **BondDim** (`int`/`vector<int>`): Bond dimension of matrices.
-  - If `int` is given the same bond dimension is used in all matrices.
-  - If `vector<int>` is given the bond dimension of each matrix is assigned from this. Length must agree with Nspins.
-#### Optional
-- **Nspins** (`int`): Total number of sites. Must agree with Hilbert. *Default:* Hilbert
-- **PhysDim** (`int`): Physical dimension of system. Must agree with Hilbert. *Default:* Hilbert
-- (*not working*) **CanonicalForm** (`bool`): Transform to canonical form after every update. *Default:* false
-
 ## Machine Name: SBS
 #### Must specify
 - **BondDim** (`int`/`vector<int>`): Bond dimension of each string
