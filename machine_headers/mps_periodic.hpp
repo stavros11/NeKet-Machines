@@ -409,33 +409,21 @@ class MPSPeriodic : public AbstractMPS<T> {
     return der / left_prods[N_ - 1].trace();
   };
 
-  // Json functions
   const Hilbert &GetHilbert() const { return hilbert_; };
 
+  // Json functions
   void to_json(json &j) const override {
-    j["Machine"]["Name"] = "MPSperiodic";
+    j["Machine"]["Name"] = "MPSdiagonal";
     j["Machine"]["Nsites"] = N_;
     j["Machine"]["BondDim"] = D_;
     j["Machine"]["PhysDim"] = d_;
     j["Machine"]["SymmetryPeriod"] = symperiod_;
-    to_jsonWeights(j["Machine"]["W"]);
-  };
-
-  void to_jsonWeights(json &jj) const override {
-    VectorType params(npar_);
-    int n = 0;
     for (int i = 0; i < symperiod_; i++) {
-      for (int j = 0; j < d_; j++) {
-        for (int k = 0; k < D_; k++) {
-          for (int l = 0; l < D_; l++) {
-            params(n) = W_[i][j](k, l);
-            n++;
-          }
-        }
+      for (int k = 0; k < d_; k++) {
+        j["Machine"]["W" + std::to_string(d_ * i + k)] = W_[i][k];
       }
     }
-    jj = params;
-  }
+  };
 
   void from_json(const json &pars) override {
     if (pars.at("Machine").at("Name") != "MPSperiodic") {
@@ -474,23 +462,19 @@ class MPSPeriodic : public AbstractMPS<T> {
     Init(true);
 
     // Loading parameters, if defined in the input
-    if (FieldExists(pars["Machine"], "W")) {
-      from_jsonWeights(pars["Machine"]["W"]);
-    }
+    from_jsonWeights(pars["Machine"]);
   };
 
   // Used in SBS too
   inline void from_jsonWeights(const json &pars) override {
-    int i = 0, j = 0;
-    for (auto const &params : pars) {
-      W_[i][j] = params;
-      j++;
-      if (j >= d_) {
-        j = 0;
-        i++;
+    for (int i = 0; i < symperiod_; i++) {
+      for (int k = 0; k < d_; k++) {
+        if (FieldExists(pars, "W" + std::to_string(d_ * i + k))) {
+          W_[i][k] = pars["W" + std::to_string(d_ * i + k)];
+        }
       }
     }
-  }
+  };
 
   // ###################################### //
   // ##### Functions for SBS use only ##### //
@@ -728,6 +712,24 @@ class MPSPeriodic : public AbstractMPS<T> {
         Eigen::Map<VectorType>((left_prods[N_ - 2]).transpose().data(), Dsq);
 
     return der / left_prods[N_ - 1].trace();
+  };
+
+  void to_json_strings(json &j,
+                       const std::vector<int> &string2site) const override {
+    json stringpar;
+
+    stringpar["Name"] = "MPSdiagonal";
+    stringpar["Nsites"] = N_;
+    stringpar["BondDim"] = D_;
+    stringpar["SymmetryPeriod"] = symperiod_;
+    stringpar["SiteNr"] = string2site;
+    for (int i = 0; i < symperiod_; i++) {
+      for (int k = 0; k < d_; k++) {
+        stringpar["W" + std::to_string(d_ * i + k)] = W_[i][k];
+      }
+    }
+
+    j["Machine"]["Strings"].push_back(stringpar);
   };
 };
 
