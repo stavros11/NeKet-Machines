@@ -66,7 +66,8 @@ class AbstractMPS : public AbstractMachine<T> {
 
   virtual VectorType DerLog(const std::vector<int> &v) = 0;
 
-  virtual void to_json_strings(json &j) const = 0;
+  virtual void to_json_strings(json &j,
+                               const std::vector<int> &string2site) const = 0;
 
   virtual void from_jsonWeights(const json &pars) = 0;
 

@@ -417,7 +417,7 @@ class MPSDiagonal : public AbstractMPS<T> {
   // Json functions
   void to_json(json &j) const override {
     j["Machine"]["Name"] = "MPSdiagonal";
-    j["Machine"]["Nsites"] = N_;
+    j["Machine"]["Length"] = N_;
     j["Machine"]["BondDim"] = D_;
     j["Machine"]["PhysDim"] = d_;
     j["Machine"]["SymmetryPeriod"] = symperiod_;
@@ -433,8 +433,8 @@ class MPSDiagonal : public AbstractMPS<T> {
       throw InvalidInputError("Error while constructing MPS from Json input");
     }
 
-    if (FieldExists(pars["Machine"], "Nsites")) {
-      N_ = pars["Machine"]["Nsites"];
+    if (FieldExists(pars["Machine"], "Length")) {
+      N_ = pars["Machine"]["Length"];
     }
     if (N_ != hilbert_.Size()) {
       throw InvalidInputError(
@@ -723,11 +723,11 @@ class MPSDiagonal : public AbstractMPS<T> {
                        const std::vector<int> &string2site) const override {
     json stringpar;
 
-    stringpar["Name"] = "MPSdiagonal";
-    stringpar["Nsites"] = N_;
+    stringpar["Length"] = N_;
     stringpar["BondDim"] = D_;
     stringpar["SymmetryPeriod"] = symperiod_;
-    stringpar["SiteNr"] = string2site;
+    stringpar["Diagonal"] = true;
+    stringpar["SiteNumbers"] = string2site;
     for (int i = 0; i < symperiod_; i++) {
       for (int k = 0; k < d_; k++) {
         stringpar["W" + std::to_string(d_ * i + k)] = W_[i][k];

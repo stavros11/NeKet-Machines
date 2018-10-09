@@ -42,10 +42,6 @@ class SBS : public AbstractMachine<T> {
   int M_;
   // Bond dimension of each string (allow different dimensions among strings)
   std::vector<int> Dstr_;
-  // Symmetry period of each string
-  std::vector<int> symperiod_;
-  // Diagonal flags
-  std::vector<bool> diagonal_flag_;
   // Length of each string (allow different lengths)
   std::vector<int> Lstr_;
   // Cumulative sum of Lstr used for lookup start indices
@@ -80,10 +76,9 @@ class SBS : public AbstractMachine<T> {
   }
 
   // Auxiliary function that defines the matrices
-  void Init() {
-    int Mdiag = 0;
+  void Init(const int Mdiag) {
     std::vector<std::vector<int>> pushback_vec2;
-    std::vector<int> two_component_vec, pushback_vec;
+    std::vector<int> two_component_vec;
     two_component_vec.push_back(0);
     two_component_vec.push_back(0);
 
@@ -93,27 +88,11 @@ class SBS : public AbstractMachine<T> {
       confindex_[localstates[i]] = i;
     }
 
-    // Initialize MPS objects and npar_ with the correct dimensions and
-    // calculate npar_ String properties are defined in from_json function
-    npar_ = 0;
-    for (int i = 0; i < M_; i++) {
-      if (diagonal_flag_[i]) {
-        strings_.push_back(Ptype(
-            new MPSDiagonal<T>(hilbert_, Lstr_[i], Dstr_[i], symperiod_[i])));
-        Mdiag++;
-      } else {
-        strings_.push_back(Ptype(
-            new MPSPeriodic<T>(hilbert_, Lstr_[i], Dstr_[i], symperiod_[i])));
-      }
-
-      npar_ += strings_.back()->Npar();
-    }
-
     // Find site2string vector by reversing string2site (defined in json)
     for (int site = 0; site < N_; site++) {
       site2string_.push_back(pushback_vec2);
       for (int i = 0; i < M_; i++) {
-        for (std::size_t pos = 0; pos < string2site_[i].size(); pos++) {
+        for (int pos = 0; pos < Lstr_[i]; pos++) {
           if (site == string2site_[i][pos]) {
             site2string_[site].push_back(two_component_vec);
             site2string_[site].back()[0] = i;
@@ -321,7 +300,6 @@ class SBS : public AbstractMachine<T> {
   // Json functions
   void to_json(json &j) const override {
     j["Machine"]["Name"] = "SBS";
-    j["Machine"]["PhysDim"] = d_;
     j["Machine"]["Nsites"] = N_;
     j["Machine"]["Strings"] = {};
     for (int i = 0; i < M_; i++) {
@@ -330,6 +308,7 @@ class SBS : public AbstractMachine<T> {
   };
 
   void from_json(const json &pars) override {
+    int Mdiag = 0;
     std::vector<int> empty_vector;
 
     if (pars.at("Machine").at("Name") != "SBS") {
@@ -352,28 +331,31 @@ class SBS : public AbstractMachine<T> {
           "Number of spins is incompatible with given Hilbert space");
     }
 
-    // Assign sites to each string (string2site)
-    Lstr_cumsum_.push_back(0);
-    if (FieldExists(pars["Machine"], "StringSites")) {
+    if (FieldExists(pars["Machine"], "Strings")) {
+      Lstr_cumsum_.push_back(0);
       M_ = 0;
-      // InfoMessage() << "Check 1" << std::endl;
-      for (auto const &i : pars["Machine"]["StringSites"]) {
-        string2site_.push_back(empty_vector);
-        int temp_string_length = 0;
-        for (auto const &j : i) {
-          string2site_.back().push_back(j);
-          temp_string_length++;
-        }
-        Lstr_.push_back(temp_string_length);
-        Lstr_cumsum_.push_back(Lstr_cumsum_.back() + 2 * temp_string_length);
-        M_++;
-      }
-    } else {
-      // Default all strings cover the whole configuration if M is given.
-      // Otherwise error.
-      if (FieldExists(pars["Machine"], "Strings")) {
-        M_ = pars["Machine"]["Strings"];
-        for (int i = 0; i < M_; i++) {
+      npar_ = 0;
+      for (auto const &stringpars : pars["Machine"]["Strings"]) {
+        bool diagonal_flag = false;
+        int symperiod = N_;
+
+        // Assign sites to each string (string2site)
+        if (FieldExists(stringpars, "SiteNumbers")) {
+          string2site_.push_back(empty_vector);
+          int temp_string_length = 0;
+          for (auto const &j : stringpars["SiteNumbers"]) {
+            string2site_.back().push_back(j);
+            temp_string_length++;
+          }
+          Lstr_.push_back(temp_string_length);
+          Lstr_cumsum_.push_back(Lstr_cumsum_.back() + 2 * temp_string_length);
+        } else {
+          // Default is strings that cover the whole configuration
+          if (FieldExists(stringpars, "Length")) {
+            if (stringpars["Length"] != N_) {
+              throw InvalidInputError("Unspecified sites of the string");
+            }
+          }
           string2site_.push_back(empty_vector);
           for (int j = 0; j < N_; j++) {
             string2site_.back().push_back(j);
@@ -381,103 +363,46 @@ class SBS : public AbstractMachine<T> {
           Lstr_.push_back(N_);
           Lstr_cumsum_.push_back(Lstr_cumsum_.back() + 2 * N_);
         }
-      } else {
-        throw InvalidInputError("Insufficient information to create strings");
-      }
-    }
+        M_++;
 
-    if (FieldExists(pars["Machine"], "Strings")) {
-      if (pars["Machine"]["Strings"] != M_) {
-        throw InvalidInputError(
-            "Given number of strings is incompatible with "
-            "site to string distribution");
-      }
-    }
-
-    // Assign bond dimensions to each string
-    if (FieldExists(pars["Machine"], "BondDim")) {
-      try {
-        for (auto const &i : pars["Machine"]["BondDim"]) {
-          Dstr_.push_back(i);
+        // Create string objects
+        if (FieldExists(stringpars, "BondDim")) {
+          Dstr_.push_back(stringpars["BondDim"]);
+        } else {
+          throw InvalidInputError("Unspecified bond dimension");
         }
-        if (Dstr_.size() != Lstr_.size()) {
+
+        if (FieldExists(stringpars, "Diagonal")) {
+          diagonal_flag = stringpars["Diagonal"];
+        }
+        if (FieldExists(stringpars, "SymmetryPeriod")) {
+          symperiod = stringpars["SymmetryPeriod"];
+        }
+        if (Lstr_.back() % symperiod != 0) {
           throw InvalidInputError(
-              "Bond dimension list size incompatible with number of strings");
+              "Symmetry period is not a divisor of string length");
         }
-      } catch (...) {
-        // Assign the same bond dimension in all strings
-        for (int i = 0; i < M_; i++) {
-          Dstr_.push_back(pars["Machine"]["BondDim"]);
+
+        // Initialize MPS objects and npar_ with the correct dimensions and
+        // calculate npar_ String properties are defined in from_json function
+        if (diagonal_flag) {
+          strings_.push_back(Ptype(new MPSDiagonal<T>(
+              hilbert_, Lstr_.back(), Dstr_.back(), symperiod)));
+          Mdiag++;
+        } else {
+          strings_.push_back(Ptype(new MPSPeriodic<T>(
+              hilbert_, Lstr_.back(), Dstr_.back(), symperiod)));
         }
+        npar_ += strings_.back()->Npar();
+
+        // Loading parameters, if defined in the input
+        strings_.back()->from_jsonWeights(stringpars);
       }
     } else {
-      throw InvalidInputError("Unspecified bond dimensions");
+      throw InvalidInputError("Insufficient information to create strings");
     }
 
-    // Assign symmetry period to each string
-    if (FieldExists(pars["Machine"], "SymmPeriod")) {
-      try {
-        int temp_ind = 0;
-        for (auto const &i : pars["Machine"]["SymmPeriod"]) {
-          symperiod_.push_back(i);
-          if (Lstr_[temp_ind] % symperiod_.back() != 0) {
-            throw InvalidInputError(
-                "Symmetry period not a divisor of string length");
-          }
-          temp_ind++;
-        }
-        if (symperiod_.size() != Lstr_.size()) {
-          throw InvalidInputError(
-              "Symmetry period list size incompatible with number of strings");
-        }
-      } catch (...) {
-        // Assign the same bond dimension in all strings
-        for (int i = 0; i < M_; i++) {
-          symperiod_.push_back(pars["Machine"]["SymmPeriod"]);
-          if (Lstr_[i] % symperiod_.back() != 0) {
-            throw InvalidInputError(
-                "Symmetry period not a divisor of string length");
-          }
-        }
-      }
-    } else {
-      // Default symmetry period is no symmetry
-      for (int i = 0; i < M_; i++) {
-        symperiod_.push_back(Lstr_[i]);
-      }
-    }
-
-    // Assign diagonal flag to each string
-    if (FieldExists(pars["Machine"], "Diagonal")) {
-      try {
-        for (auto const &i : pars["Machine"]["Diagonal"]) {
-          diagonal_flag_.push_back(i);
-        }
-        if (Dstr_.size() != Lstr_.size()) {
-          throw InvalidInputError(
-              "Diagonal list size incompatible with number of strings");
-        }
-      } catch (...) {
-        // Assign the same flag in all strings
-        for (int i = 0; i < M_; i++) {
-          diagonal_flag_.push_back(pars["Machine"]["Diagonal"]);
-        }
-      }
-    } else {
-      // Default flag is false
-      for (int i = 0; i < M_; i++) {
-        diagonal_flag_.push_back(false);
-      }
-    }
-
-    Init();
-
-    // Loading parameters, if defined in the input
-    if (FieldExists(pars["Machine"], "StringW")) {
-      for (int i = 0; i < M_; i++) {
-        strings_[i]->from_jsonWeights(pars["Machine"]["StringW"][i]);
-      }
-    }
+    Init(Mdiag);
   };
 };
 
