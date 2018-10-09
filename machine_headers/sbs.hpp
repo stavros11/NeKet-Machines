@@ -113,6 +113,10 @@ class SBS : public AbstractMachine<T> {
       std::cout << Dstr_[i] << " ";
     }
     std::cout << std::endl;
+    for (int i = 0; i < M_; i++) {
+      std::cout << Lstr_cumsum_[i] << " ";
+    }
+    std::cout << std::endl;
     InfoMessage() << "The number of variational parameters is " << npar_
                   << std::endl;
   };
@@ -301,6 +305,7 @@ class SBS : public AbstractMachine<T> {
   void to_json(json &j) const override {
     j["Machine"]["Name"] = "SBS";
     j["Machine"]["Nsites"] = N_;
+    j["Machine"]["PhysDim"] = d_;
     j["Machine"]["Strings"] = {};
     for (int i = 0; i < M_; i++) {
       strings_[i]->to_json_strings(j, string2site_[i]);
@@ -333,11 +338,13 @@ class SBS : public AbstractMachine<T> {
 
     if (FieldExists(pars["Machine"], "Strings")) {
       Lstr_cumsum_.push_back(0);
-      M_ = 0;
       npar_ = 0;
-      for (auto const &stringpars : pars["Machine"]["Strings"]) {
+      M_ = pars["Machine"]["Strings"].size();
+
+      for (int string = 0; string < M_; string++) {
+        json stringpars = pars["Machine"]["Strings"][string];
         bool diagonal_flag = false;
-        int symperiod = N_;
+        int symperiod;
 
         // Assign sites to each string (string2site)
         if (FieldExists(stringpars, "SiteNumbers")) {
@@ -363,7 +370,6 @@ class SBS : public AbstractMachine<T> {
           Lstr_.push_back(N_);
           Lstr_cumsum_.push_back(Lstr_cumsum_.back() + 2 * N_);
         }
-        M_++;
 
         // Create string objects
         if (FieldExists(stringpars, "BondDim")) {
@@ -377,10 +383,12 @@ class SBS : public AbstractMachine<T> {
         }
         if (FieldExists(stringpars, "SymmetryPeriod")) {
           symperiod = stringpars["SymmetryPeriod"];
-        }
-        if (Lstr_.back() % symperiod != 0) {
-          throw InvalidInputError(
-              "Symmetry period is not a divisor of string length");
+          if (Lstr_.back() % symperiod != 0) {
+            throw InvalidInputError(
+                "Symmetry period is not a divisor of string length");
+          }
+        } else {
+          symperiod = Lstr_.back();
         }
 
         // Initialize MPS objects and npar_ with the correct dimensions and
