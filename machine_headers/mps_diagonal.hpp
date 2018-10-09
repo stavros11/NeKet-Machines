@@ -56,7 +56,7 @@ class MPSDiagonal : public AbstractMPS<T> {
 
   // constructor as a machine
   explicit MPSDiagonal(const Hilbert &hilbert, const json &pars)
-      : N_(hilbert.Size()), hilbert_(hilbert), d_(hilbert.LocalSize()) {
+      : N_(hilbert.Size()), d_(hilbert.LocalSize()), hilbert_(hilbert) {
     from_json(pars);
   };
 
@@ -66,8 +66,8 @@ class MPSDiagonal : public AbstractMPS<T> {
       : N_(N),
         d_(hilbert.LocalSize()),
         D_(D),
-        hilbert_(hilbert),
-        symperiod_(symperiod) {
+        symperiod_(symperiod),
+        hilbert_(hilbert) {
     Init(false);
   };
 

@@ -75,7 +75,7 @@ class SBS : public AbstractMachine<T> {
 
   // constructor
   explicit SBS(const Hilbert &hilbert, const json &pars)
-      : N_(hilbert.Size()), hilbert_(hilbert), d_(hilbert.LocalSize()) {
+      : N_(hilbert.Size()), d_(hilbert.LocalSize()), hilbert_(hilbert) {
     from_json(pars);
   }
 
@@ -113,7 +113,7 @@ class SBS : public AbstractMachine<T> {
     for (int site = 0; site < N_; site++) {
       site2string_.push_back(pushback_vec2);
       for (int i = 0; i < M_; i++) {
-        for (int pos = 0; pos < string2site_[i].size(); pos++) {
+        for (std::size_t pos = 0; pos < string2site_[i].size(); pos++) {
           if (site == string2site_[i][pos]) {
             site2string_[site].push_back(two_component_vec);
             site2string_[site].back()[0] = i;
@@ -291,7 +291,7 @@ class SBS : public AbstractMachine<T> {
       int site = tochange[j];
       // For each site in toflip find the strings it belongs. Save the
       // corresponding positions:
-      for (int i = 0; i < site2string_[site].size(); i++) {
+      for (std::size_t i = 0; i < site2string_[site].size(); i++) {
         int string_nr = site2string_[site][i][0];
         string_tochange[string_nr].push_back(site2string_[site][i][1]);
         string_newconf[string_nr].push_back(confindex_[newconf[j]]);
@@ -406,7 +406,7 @@ class SBS : public AbstractMachine<T> {
         for (auto const &i : pars["Machine"]["BondDim"]) {
           Dstr_.push_back(i);
         }
-        if (Dstr_.size() != M_) {
+        if (Dstr_.size() != Lstr_.size()) {
           throw InvalidInputError(
               "Bond dimension list size incompatible with number of strings");
         }
@@ -426,13 +426,13 @@ class SBS : public AbstractMachine<T> {
         int temp_ind = 0;
         for (auto const &i : pars["Machine"]["SymmPeriod"]) {
           symperiod_.push_back(i);
-          if (symperiod_.back() > Lstr_[temp_ind]) {
+          if (Lstr_[temp_ind] % symperiod_.back() != 0) {
             throw InvalidInputError(
-                "Symmetry period larger than number of sites");
+                "Symmetry period not a divisor of string length");
           }
           temp_ind++;
         }
-        if (symperiod_.size() != M_) {
+        if (symperiod_.size() != Lstr_.size()) {
           throw InvalidInputError(
               "Symmetry period list size incompatible with number of strings");
         }
@@ -440,9 +440,9 @@ class SBS : public AbstractMachine<T> {
         // Assign the same bond dimension in all strings
         for (int i = 0; i < M_; i++) {
           symperiod_.push_back(pars["Machine"]["SymmPeriod"]);
-          if (symperiod_.back() > Lstr_[i]) {
+          if (Lstr_[i] % symperiod_.back() != 0) {
             throw InvalidInputError(
-                "Symmetry period larger than number of sites");
+                "Symmetry period not a divisor of string length");
           }
         }
       }
@@ -459,7 +459,7 @@ class SBS : public AbstractMachine<T> {
         for (auto const &i : pars["Machine"]["Diagonal"]) {
           diagonal_flag_.push_back(i);
         }
-        if (Dstr_.size() != M_) {
+        if (Dstr_.size() != Lstr_.size()) {
           throw InvalidInputError(
               "Diagonal list size incompatible with number of strings");
         }
