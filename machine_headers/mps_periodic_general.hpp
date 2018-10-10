@@ -25,10 +25,9 @@
 
 namespace netket {
 
-template <typename T, typename ParamType>
+template <typename T, typename ParamType, typename MPSType>
 class MPSPeriodicGeneral : public AbstractMachine<T> {
   using VectorType = typename AbstractMachine<T>::VectorType;
-  using MatrixType = typename AbstractMachine<T>::MatrixType;
 
   // Number of sites
   int N_;
@@ -60,13 +59,7 @@ class MPSPeriodicGeneral : public AbstractMachine<T> {
     from_json(pars);
   }
 
-  virtual int flattened_dim(const int &D) = 0;
-
   virtual ParamType product(const ParamType &a, const ParamType &b) const = 0;
-
-  virtual ParamType empty_initialization(const bool &ones) const = 0;
-
-  virtual void print_creation_message(const int &N) const = 0;
 
   virtual VectorType X2Vec(const ParamType &X) const = 0;
 
@@ -75,14 +68,17 @@ class MPSPeriodicGeneral : public AbstractMachine<T> {
 
   virtual void InitLookup_check(LookupType &lt, const int i) const = 0;
 
-  virtual ParamType ltP(LookupType &lt, const int i) const = 0;
+  virtual ParamType *PltP(LookupType &lt, const int i) const = 0;
+
+  virtual ParamType ltP(const LookupType &lt, const int i) const = 0;
 
   // Auxiliary function that defines the matrices
   void Init(const bool &show_messages) {
-    Dflat_ = flattened_dim(D_);
+    Dflat_ = static_cast<MPSType &>(*this).flattened_dim(D_);
     // Initialize parameters
     std::vector<ParamType> pushback_vec;
-    ParamType init_mat = empty_initialization(true);
+    ParamType init_mat =
+        static_cast<MPSType const &>(*this).empty_initialization(true);
 
     for (int site = 0; site < symperiod_; site++) {
       W_.push_back(pushback_vec);
@@ -95,8 +91,7 @@ class MPSPeriodicGeneral : public AbstractMachine<T> {
 
     // Machine creation messages
     if (show_messages) {
-      InfoMessage() << "Physical dimension d = " << d_ << std::endl;
-      this->print_creation_message(N_);
+      static_cast<MPSType const &>(*this).print_creation_message(N_);
       InfoMessage() << "Physical dimension d = " << d_
                     << " and bond dimension D = " << D_ << std::endl;
       if (symperiod_ < N_) {
@@ -169,23 +164,23 @@ class MPSPeriodicGeneral : public AbstractMachine<T> {
 
     // First (left) site
     InitLookup_check(lt, 0);
-    ltP(lt, 0) = W_[0][confindex_[v(0)]];
+    *PltP(lt, 0) = W_[0][confindex_[v(0)]];
 
     // Last (right) site
     InitLookup_check(lt, 1);
-    ltP(lt, 1) = W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]];
+    *PltP(lt, 1) = W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]];
 
     // Rest sites
     for (int i = 2; i < 2 * N_; i += 2) {
       InitLookup_check(lt, i);
       int site = i / 2;
-      ltP(lt, i) =
-          product(lt.M(i - 2), W_[(site % symperiod_)][confindex_[v(site)]]);
+      *PltP(lt, i) =
+          product(ltP(lt, i - 2), W_[(site % symperiod_)][confindex_[v(site)]]);
 
       InitLookup_check(lt, i + 1);
       site = N_ - 1 - site;
-      ltP(lt, i + 1) =
-          product(W_[site % symperiod_][confindex_[v(site)]], lt.M(i - 1));
+      *PltP(lt, i + 1) =
+          product(W_[site % symperiod_][confindex_[v(site)]], ltP(lt, i - 1));
     }
   };
 
@@ -213,65 +208,67 @@ class MPSPeriodicGeneral : public AbstractMachine<T> {
 
     // Update left (site++)
     if (site == 0) {
-      lt.M(0) = W_[0][confindex_[newconf[sorted_ind[0]]]];
+      *PltP(lt, 0) = W_[0][confindex_[newconf[sorted_ind[0]]]];
     } else {
-      lt.M(2 * site) =
-          product(lt.M(2 * (site - 1)),
+      *PltP(lt, 2 * site) =
+          product(ltP(lt, 2 * (site - 1)),
                   W_[site % symperiod_][confindex_[newconf[sorted_ind[0]]]]);
     }
 
     for (std::size_t k = 1; k < nchange; k++) {
       for (site = tochange[sorted_ind[k - 1]] + 1;
            site < tochange[sorted_ind[k]]; site++) {
-        lt.M(2 * site) = product(lt.M(2 * (site - 1)),
-                                 W_[site % symperiod_][confindex_[v(site)]]);
+        *PltP(lt, 2 * site) =
+            product(ltP(lt, 2 * (site - 1)),
+                    W_[site % symperiod_][confindex_[v(site)]]);
       }
       site = tochange[sorted_ind[k]];
-      lt.M(2 * site) =
-          product(lt.M(2 * (site - 1)),
+      *PltP(lt, 2 * site) =
+          product(ltP(lt, 2 * (site - 1)),
                   W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
     }
 
     for (site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
-      lt.M(2 * site) = product(lt.M(2 * (site - 1)),
-                               W_[site % symperiod_][confindex_[v(site)]]);
+      *PltP(lt, 2 * site) = product(ltP(lt, 2 * (site - 1)),
+                                    W_[site % symperiod_][confindex_[v(site)]]);
     }
 
     // Update right (site--)
     site = tochange[sorted_ind[nchange - 1]];
     if (site == N_ - 1) {
-      lt.M(1) = W_[(N_ - 1) % symperiod_]
-                  [confindex_[newconf[sorted_ind[nchange - 1]]]];
+      *PltP(lt, 1) = W_[(N_ - 1) % symperiod_]
+                       [confindex_[newconf[sorted_ind[nchange - 1]]]];
     } else {
-      lt.M(2 * (N_ - site) - 1) = product(
+      *PltP(lt, 2 * (N_ - site) - 1) = product(
           W_[site % symperiod_][confindex_[newconf[sorted_ind[nchange - 1]]]],
-          lt.M(2 * (N_ - site) - 3));
+          ltP(lt, 2 * (N_ - site) - 3));
     }
 
     for (int k = nchange - 2; k >= 0; k--) {
       for (site = tochange[sorted_ind[k + 1]] - 1;
            site > tochange[sorted_ind[k]]; site--) {
-        lt.M(2 * (N_ - site) - 1) =
+        *PltP(lt, 2 * (N_ - site) - 1) =
             product(W_[site % symperiod_][confindex_[v(site)]],
-                    lt.M(2 * (N_ - site) - 3));
+                    ltP(lt, 2 * (N_ - site) - 3));
       }
       site = tochange[sorted_ind[k]];
-      lt.M(2 * (N_ - site) - 1) =
+      *PltP(lt, 2 * (N_ - site) - 1) =
           product(W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]],
-                  lt.M(2 * (N_ - site) - 3));
+                  ltP(lt, 2 * (N_ - site) - 3));
     }
 
     for (site = tochange[sorted_ind[0]] - 1; site >= 0; site--) {
-      lt.M(2 * (N_ - site) - 1) =
+      *PltP(lt, 2 * (N_ - site) - 1) =
           product(W_[site % symperiod_][confindex_[v(site)]],
-                  lt.M(2 * (N_ - site) - 3));
+                  ltP(lt, 2 * (N_ - site) - 3));
     }
   };
 
   // Auxiliary function that calculates contractions from site1 to site2
-  inline MatrixType mps_contraction(const Eigen::VectorXd &v, const int &site1,
-                                    const int &site2) {
-    MatrixType c = empty_initialization(true);
+  inline ParamType mps_contraction(const Eigen::VectorXd &v, const int &site1,
+                                   const int &site2) {
+    ParamType c =
+        static_cast<MPSType const &>(*this).empty_initialization(true);
     for (int site = site1; site < site2; site++) {
       c = product(c, W_[site % symperiod_][confindex_[v(site)]]);
     }
@@ -283,7 +280,7 @@ class MPSPeriodicGeneral : public AbstractMachine<T> {
   };
 
   T LogVal(const Eigen::VectorXd & /* v */, const LookupType &lt) override {
-    return std::log(lt.M(2 * N_ - 2).trace());
+    return std::log(ltP(lt, 2 * N_ - 2).trace());
   };
 
   VectorType LogValDiff(
@@ -294,7 +291,8 @@ class MPSPeriodicGeneral : public AbstractMachine<T> {
     std::vector<std::size_t> sorted_ind;
     VectorType logvaldiffs = VectorType::Zero(nconn);
     StateType current_psi = mps_contraction(v, 0, N_).trace();
-    ParamType new_prods = empty_initialization(true);
+    ParamType new_prods =
+        static_cast<MPSType const &>(*this).empty_initialization(false);
 
     for (std::size_t k = 0; k < nconn; k++) {
       std::size_t nchange = tochange[k].size();
@@ -338,7 +336,7 @@ class MPSPeriodicGeneral : public AbstractMachine<T> {
     if (nflip <= 0) {
       return T(0, 0);
     }
-    MatrixType new_prod;
+    ParamType new_prod;
     std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
     int site = toflip[sorted_ind[0]];
 
@@ -346,7 +344,7 @@ class MPSPeriodicGeneral : public AbstractMachine<T> {
       new_prod = W_[0][confindex_[newconf[sorted_ind[0]]]];
     } else {
       new_prod =
-          product(lt.M(2 * (site - 1)),
+          product(ltP(lt, 2 * (site - 1)),
                   W_[site % symperiod_][confindex_[newconf[sorted_ind[0]]]]);
     }
 
@@ -360,15 +358,16 @@ class MPSPeriodicGeneral : public AbstractMachine<T> {
 
     site = toflip[sorted_ind[nflip - 1]];
     if (site < N_ - 1) {
-      new_prod = product(new_prod, lt.M(2 * (N_ - site) - 3));
+      new_prod = product(new_prod, ltP(lt, 2 * (N_ - site) - 3));
     }
 
-    return std::log(new_prod.trace() / lt.M(2 * N_ - 2).trace());
+    return std::log(new_prod.trace() / ltP(lt, 2 * N_ - 2).trace());
   };
 
   // Derivative with full calculation
   VectorType DerLog(const Eigen::VectorXd &v) override {
-    MatrixType temp_product = empty_initialization(true);
+    ParamType temp_product =
+        static_cast<MPSType const &>(*this).empty_initialization(false);
     std::vector<ParamType> left_prods, right_prods;
     VectorType der = VectorType::Zero(npar_);
 
