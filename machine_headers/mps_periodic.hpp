@@ -84,6 +84,15 @@ class MPSPeriodic : public AbstractMachine<T> {
   }
 
   template <bool diagonal>
+  inline MatrixType dagger(MatrixType m) const {
+    return m.adjoint();
+  }
+  template <>
+  inline MatrixType dagger<true>(MatrixType m) const {
+    return m.conjugate();
+  }
+
+  template <bool diagonal>
   inline void setparamsident(MatrixType &m, const VectorType &pars) const {
     for (int i = 0; i < D_; i++) {
       for (int j = 0; j < D_; j++) {
@@ -99,6 +108,27 @@ class MPSPeriodic : public AbstractMachine<T> {
                                    const VectorType &pars) const {
     for (int i = 0; i < D_; i++) {
       m(i, 0) = T(1, 0) + pars(i);
+    }
+  }
+
+  template <bool diagonal>
+  inline void setunit(MatrixType &m, const VectorType &pars) const {
+    MatrixType rnd(D_, D_);
+    for (int i = 0; i < D_; i++) {
+      for (int j = 0; j < D_; j++) {
+        rnd(i, j) = pars(i * D_ + j);
+      }
+    }
+    for (int i = 0; i < D_; i++) {
+      for (int j = 0; j < D_; j++) {
+        m(i, j) = std::exp(T(0.5, 0) * (rnd(i, j) + std::conj(rnd(j, i))));
+      }
+    }
+  }
+  template <>
+  inline void setunit<true>(MatrixType &m, const VectorType &pars) const {
+    for (int i = 0; i < D_; i++) {
+      m(i, 0) = std::exp(T(0.5, 0) * (pars(i) + std::conj(pars(i))));
     }
   }
 
@@ -186,7 +216,7 @@ class MPSPeriodic : public AbstractMachine<T> {
 
   // Auxiliary function used for setting initial random parameters and adding
   // identities in every matrix
-  inline void SetParametersIdentity(const VectorType &pars) {
+  void SetParametersIdentity(const VectorType &pars) {
     int k = 0;
     for (int site = 0; site < symperiod_; site++) {
       for (int spin = 0; spin < d_; spin++) {
@@ -196,12 +226,21 @@ class MPSPeriodic : public AbstractMachine<T> {
     }
   }
 
+  void SetUnitary(const VectorType &pars) {
+    int k = 0;
+    for (int site = 0; site < symperiod_; site++) {
+      for (int spin = 0; spin < d_; spin++) {
+        setunit<diag>(W_[site][spin], pars.segment(k, Dsq_));
+        k += Dsq_;
+      }
+    }
+  }
+
   void InitRandomPars(int seed, double sigma) override {
     VectorType pars(npar_);
 
     netket::RandomGaussian(pars, seed, sigma);
-    SetParametersIdentity(pars);
-    // SetParameters(pars);
+    SetUnitary(pars);
   }
 
   int Nvisible() const override { return N_; }
