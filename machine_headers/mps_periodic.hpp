@@ -44,8 +44,6 @@ class MPSPeriodic : public AbstractMachine<T> {
   int npar_;
   // Period of translational symmetry (has to be a divisor of N)
   int symperiod_;
-  // Indices for tree lookup
-  std::vector<int> ltind_;
 
   // MPS Matrices (stored as [symperiod, d, D, D] or [symperiod, d, D, 1])
   std::vector<std::vector<MatrixType>> W_;
@@ -67,70 +65,35 @@ class MPSPeriodic : public AbstractMachine<T> {
     from_json(pars);
   }
 
-  template <bool diagonal>
-  inline MatrixType prod(MatrixType m1, MatrixType m2) const {
+  inline MatrixType prod(const MatrixType &m1, const MatrixType &m2) const {
+    if (diag) {
+      return m1.cwiseProduct(m2);
+    }
+
     return m1 * m2;
   }
-  template <>
-  inline MatrixType prod<true>(MatrixType m1, MatrixType m2) const {
-    return m1.cwiseProduct(m2);
-  }
 
-  template <bool diagonal>
-  inline T trace(MatrixType m) const {
+  inline T trace(const MatrixType &m) const {
+    if (diag) {
+      return m.sum();
+    }
     return m.trace();
   }
-  template <>
-  inline T trace<true>(MatrixType m) const {
-    return m.sum();
-  }
 
-  template <bool diagonal>
-  inline MatrixType dagger(MatrixType m) const {
-    return m.adjoint();
-  }
-  template <>
-  inline MatrixType dagger<true>(MatrixType m) const {
-    return m.conjugate();
-  }
-
-  template <bool diagonal>
   inline void setparamsident(MatrixType &m, const VectorType &pars) const {
-    for (int i = 0; i < D_; i++) {
-      for (int j = 0; j < D_; j++) {
-        m(i, j) = pars(i * D_ + j);
-        if (i == j) {
-          m(i, j) += T(1, 0);
+    if (diag) {
+      for (int i = 0; i < D_; i++) {
+        m(i, 0) = T(1, 0) + pars(i);
+      }
+    } else {
+      for (int i = 0; i < D_; i++) {
+        for (int j = 0; j < D_; j++) {
+          m(i, j) = pars(i * D_ + j);
+          if (i == j) {
+            m(i, j) += T(1, 0);
+          }
         }
       }
-    }
-  }
-  template <>
-  inline void setparamsident<true>(MatrixType &m,
-                                   const VectorType &pars) const {
-    for (int i = 0; i < D_; i++) {
-      m(i, 0) = T(1, 0) + pars(i);
-    }
-  }
-
-  template <bool diagonal>
-  inline void setunit(MatrixType &m, const VectorType &pars) const {
-    MatrixType rnd(D_, D_);
-    for (int i = 0; i < D_; i++) {
-      for (int j = 0; j < D_; j++) {
-        rnd(i, j) = pars(i * D_ + j);
-      }
-    }
-    for (int i = 0; i < D_; i++) {
-      for (int j = 0; j < D_; j++) {
-        m(i, j) = std::exp(T(0.5, 0) * (rnd(i, j) + std::conj(rnd(j, i))));
-      }
-    }
-  }
-  template <>
-  inline void setunit<true>(MatrixType &m, const VectorType &pars) const {
-    for (int i = 0; i < D_; i++) {
-      m(i, 0) = std::exp(T(0.5, 0) * (pars(i) + std::conj(pars(i))));
     }
   }
 
@@ -222,17 +185,7 @@ class MPSPeriodic : public AbstractMachine<T> {
     int k = 0;
     for (int site = 0; site < symperiod_; site++) {
       for (int spin = 0; spin < d_; spin++) {
-        setparamsident<diag>(W_[site][spin], pars.segment(k, Dsq_));
-        k += Dsq_;
-      }
-    }
-  }
-
-  void SetUnitary(const VectorType &pars) {
-    int k = 0;
-    for (int site = 0; site < symperiod_; site++) {
-      for (int spin = 0; spin < d_; spin++) {
-        setunit<diag>(W_[site][spin], pars.segment(k, Dsq_));
+        setparamsident(W_[site][spin], pars.segment(k, Dsq_));
         k += Dsq_;
       }
     }
@@ -242,7 +195,7 @@ class MPSPeriodic : public AbstractMachine<T> {
     VectorType pars(npar_);
 
     netket::RandomGaussian(pars, seed, sigma);
-    SetUnitary(pars);
+    SetParametersIdentity(pars);
   }
 
   int Nvisible() const override { return N_; }
@@ -262,344 +215,302 @@ class MPSPeriodic : public AbstractMachine<T> {
     for (int i = 2; i < 2 * N_; i += 2) {
       _InitLookup_check(lt, i);
       int site = i / 2;
-      lt.M(i) =
-          prod<diag>(lt.M(i - 2), W_[(site % symperiod_)][confindex_[v(site)]]);
+      lt.M(i) = prod(lt.M(i - 2), W_[(site % symperiod_)][confindex_[v(site)]]);
 
       _InitLookup_check(lt, i + 1);
       site = N_ - 1 - site;
       lt.M(i + 1) =
-          prod<diag>(W_[site % symperiod_][confindex_[v(site)]], lt.M(i - 1));
+          prod(W_[site % symperiod_][confindex_[v(site)]], lt.M(i - 1));
     }
   }
 
-  void InitLookupTree(const Eigen::VectorXd &v, LookupType &lt) override {
-    int k = 0;
-    for (int site = 0; site < N_ - 1; site++) {
-      _InitLookup_check(lt, k);
-      lt.M(k) = prod(W_[site][confindex_[v(site)]],
-                     W_[site + 1][confindex_[v(site + 1)]]);
-      k++;
-      for (int i = 2; i < N_ - site; i++) {
-        _InitLookup_check(lt, k);
-        lt.M(k) = prod(lt.M(k - 1), W_[site + i][confindex_[v(site + i)]]);
-        k++;
-      }
-      ltind_.push_back(k);
+  // Auxiliary function
+  inline void _InitLookup_check(LookupType &lt, int i) {
+    if (lt.MatrixSize() == i) {
+      lt.AddMatrix(D_, Dsec_);
+    } else {
+      lt.M(i).resize(D_, Dsec_);
     }
   }
 
-  void InitLookupTreeV2(const Eigen::VectorXd &v, LookupType &lt) override {
-    ltind_.push_back(0);
-    // Length 2
-    for (int site = 0; site < N_ - 1; site++) {
-      _InitLookup_check(lt, site);
-      lt.M(site) = prod(W_[site][confindex_[v(site)]],
-                        W_[site + 1][confindex_[v(site + 1)]]);
-    }
-    ltind_.push_back(N_);
-    // Length >3
-    for (int length = 2; length < N_; length++) {
-      for (int site = 0; site < N_ - length; site++) {
-        _InitLookup_check(lt, ltind_[lenght - 1] + site);
-        lt.M(ltind_[lenght - 1] + site) =
-            prod(lt.M(ltind_[lenght - 2] + site),
-                 prod(W_[site + length][confindex_[v(site + length)]]));
-      }
-      ltind_.push_back(ltind_[length - 1] + N_ - length);
-    }
+  // Auxiliary function for sorting indeces
+  // (copied from stackexchange - original answer by Lukasz Wiklendt)
+  inline std::vector<std::size_t> sort_indeces(const std::vector<int> &v) {
+    // initialize original index locations
+    std::vector<std::size_t> idx(v.size());
+    std::iota(idx.begin(), idx.end(), 0);
+    // sort indexes based on comparing values in v
+    std::sort(idx.begin(), idx.end(),
+              [&v](std::size_t i1, std::size_t i2) { return v[i1] < v[i2]; });
+    return idx;
+  }
 
-    // Auxiliary function
-    inline void _InitLookup_check(LookupType & lt, int i) {
-      if (lt.MatrixSize() == i) {
-        lt.AddMatrix(D_, Dsec_);
-      } else {
-        lt.M(i).resize(D_, Dsec_);
-      }
+  // Check lookups later
+  void UpdateLookup(const Eigen::VectorXd &v, const std::vector<int> &tochange,
+                    const std::vector<double> &newconf,
+                    LookupType &lt) override {
+    std::size_t nchange = tochange.size();
+    if (nchange <= 0) {
+      return;
     }
+    std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
+    int site = tochange[sorted_ind[0]];
 
-    // Auxiliary function for sorting indeces
-    // (copied from stackexchange - original answer by Lukasz Wiklendt)
-    inline std::vector<std::size_t> sort_indeces(const std::vector<int> &v) {
-      // initialize original index locations
-      std::vector<std::size_t> idx(v.size());
-      std::iota(idx.begin(), idx.end(), 0);
-      // sort indexes based on comparing values in v
-      std::sort(idx.begin(), idx.end(),
-                [&v](std::size_t i1, std::size_t i2) { return v[i1] < v[i2]; });
-      return idx;
+    // Update left (site++)
+    if (site == 0) {
+      lt.M(0) = W_[0][confindex_[newconf[sorted_ind[0]]]];
+    } else {
+      lt.M(2 * site) =
+          prod(lt.M(2 * (site - 1)),
+               W_[site % symperiod_][confindex_[newconf[sorted_ind[0]]]]);
     }
 
-    // Check lookups later
-    void UpdateLookup(
-        const Eigen::VectorXd &v, const std::vector<int> &tochange,
-        const std::vector<double> &newconf, LookupType &lt) override {
-      std::size_t nchange = tochange.size();
-      if (nchange <= 0) {
-        return;
+    for (std::size_t k = 1; k < nchange; k++) {
+      for (site = tochange[sorted_ind[k - 1]] + 1;
+           site < tochange[sorted_ind[k]]; site++) {
+        lt.M(2 * site) = prod(lt.M(2 * (site - 1)),
+                              W_[site % symperiod_][confindex_[v(site)]]);
       }
-      std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
-      int site = tochange[sorted_ind[0]];
+      site = tochange[sorted_ind[k]];
+      lt.M(2 * site) =
+          prod(lt.M(2 * (site - 1)),
+               W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
+    }
 
-      // Update left (site++)
-      if (site == 0) {
-        lt.M(0) = W_[0][confindex_[newconf[sorted_ind[0]]]];
-      } else {
-        lt.M(2 * site) = prod<diag>(
-            lt.M(2 * (site - 1)),
-            W_[site % symperiod_][confindex_[newconf[sorted_ind[0]]]]);
-      }
+    for (site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
+      lt.M(2 * site) = prod(lt.M(2 * (site - 1)),
+                            W_[site % symperiod_][confindex_[v(site)]]);
+    }
 
-      for (std::size_t k = 1; k < nchange; k++) {
-        for (site = tochange[sorted_ind[k - 1]] + 1;
-             site < tochange[sorted_ind[k]]; site++) {
-          lt.M(2 * site) = prod<diag>(
-              lt.M(2 * (site - 1)), W_[site % symperiod_][confindex_[v(site)]]);
-        }
-        site = tochange[sorted_ind[k]];
-        lt.M(2 * site) = prod<diag>(
-            lt.M(2 * (site - 1)),
-            W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
-      }
+    // Update right (site--)
+    site = tochange[sorted_ind[nchange - 1]];
+    if (site == N_ - 1) {
+      lt.M(1) = W_[(N_ - 1) % symperiod_]
+                  [confindex_[newconf[sorted_ind[nchange - 1]]]];
+    } else {
+      lt.M(2 * (N_ - site) - 1) = prod(
+          W_[site % symperiod_][confindex_[newconf[sorted_ind[nchange - 1]]]],
+          lt.M(2 * (N_ - site) - 3));
+    }
 
-      for (site = tochange[sorted_ind[nchange - 1]] + 1; site < N_; site++) {
-        lt.M(2 * site) = prod<diag>(lt.M(2 * (site - 1)),
-                                    W_[site % symperiod_][confindex_[v(site)]]);
-      }
-
-      // Update right (site--)
-      site = tochange[sorted_ind[nchange - 1]];
-      if (site == N_ - 1) {
-        lt.M(1) = W_[(N_ - 1) % symperiod_]
-                    [confindex_[newconf[sorted_ind[nchange - 1]]]];
-      } else {
-        lt.M(2 * (N_ - site) - 1) = prod<diag>(
-            W_[site % symperiod_][confindex_[newconf[sorted_ind[nchange - 1]]]],
-            lt.M(2 * (N_ - site) - 3));
-      }
-
-      for (std::size_t k = 0; k < nchange - 1; k++) {
-        for (site = tochange[sorted_ind[nchange - 1 - k]] - 1;
-             site > tochange[sorted_ind[nchange - 2 - k]]; site--) {
-          lt.M(2 * (N_ - site) - 1) =
-              prod<diag>(W_[site % symperiod_][confindex_[v(site)]],
-                         lt.M(2 * (N_ - site) - 3));
-        }
-        site = tochange[sorted_ind[nchange - 2 - k]];
+    for (std::size_t k = 0; k < nchange - 1; k++) {
+      for (site = tochange[sorted_ind[nchange - 1 - k]] - 1;
+           site > tochange[sorted_ind[nchange - 2 - k]]; site--) {
         lt.M(2 * (N_ - site) - 1) =
-            prod<diag>(W_[site % symperiod_]
-                         [confindex_[newconf[sorted_ind[nchange - 2 - k]]]],
-                       lt.M(2 * (N_ - site) - 3));
+            prod(W_[site % symperiod_][confindex_[v(site)]],
+                 lt.M(2 * (N_ - site) - 3));
       }
-
-      for (site = tochange[sorted_ind[0]] - 1; site >= 0; site--) {
-        lt.M(2 * (N_ - site) - 1) =
-            prod<diag>(W_[site % symperiod_][confindex_[v(site)]],
-                       lt.M(2 * (N_ - site) - 3));
-      }
+      site = tochange[sorted_ind[nchange - 2 - k]];
+      lt.M(2 * (N_ - site) - 1) =
+          prod(W_[site % symperiod_]
+                 [confindex_[newconf[sorted_ind[nchange - 2 - k]]]],
+               lt.M(2 * (N_ - site) - 3));
     }
 
-    // Auxiliary function that calculates contractions from site1 to site2
-    inline MatrixType mps_contraction(const Eigen::VectorXd &v,
-                                      const int &site1, const int &site2) {
-      MatrixType c = identity_mat_;
-      for (int site = site1; site < site2; site++) {
-        c = prod<diag>(c, W_[site % symperiod_][confindex_[v(site)]]);
-      }
-      return c;
+    for (site = tochange[sorted_ind[0]] - 1; site >= 0; site--) {
+      lt.M(2 * (N_ - site) - 1) =
+          prod(W_[site % symperiod_][confindex_[v(site)]],
+               lt.M(2 * (N_ - site) - 3));
     }
+  }
 
-    T LogVal(const Eigen::VectorXd &v) override {
-      return std::log(trace<diag>(mps_contraction(v, 0, N_)));
+  // Auxiliary function that calculates contractions from site1 to site2
+  inline MatrixType mps_contraction(const Eigen::VectorXd &v, const int &site1,
+                                    const int &site2) {
+    MatrixType c = identity_mat_;
+    for (int site = site1; site < site2; site++) {
+      c = prod(c, W_[site % symperiod_][confindex_[v(site)]]);
     }
+    return c;
+  }
 
-    T LogVal(const Eigen::VectorXd & /* v */, const LookupType &lt) override {
-      return std::log(trace<diag>(lt.M(2 * N_ - 2)));
-    }
+  T LogVal(const Eigen::VectorXd &v) override {
+    return std::log(trace(mps_contraction(v, 0, N_)));
+  }
 
-    VectorType LogValDiff(
-        const Eigen::VectorXd &v, const std::vector<std::vector<int>> &tochange,
-        const std::vector<std::vector<double>> &newconf) override {
-      const std::size_t nconn = tochange.size();
+  T LogVal(const Eigen::VectorXd & /* v */, const LookupType &lt) override {
+    return std::log(trace(lt.M(2 * N_ - 2)));
+  }
 
-      std::vector<std::size_t> sorted_ind;
-      VectorType logvaldiffs = VectorType::Zero(nconn);
-      StateType current_psi = trace<diag>(mps_contraction(v, 0, N_));
-      MatrixType new_prods(D_, Dsec_);
+  VectorType LogValDiff(
+      const Eigen::VectorXd &v, const std::vector<std::vector<int>> &tochange,
+      const std::vector<std::vector<double>> &newconf) override {
+    const std::size_t nconn = tochange.size();
 
-      for (std::size_t k = 0; k < nconn; k++) {
-        std::size_t nchange = tochange[k].size();
-        if (nchange > 0) {
-          sorted_ind = sort_indeces(tochange[k]);
-          int site = tochange[k][sorted_ind[0]];
+    std::vector<std::size_t> sorted_ind;
+    VectorType logvaldiffs = VectorType::Zero(nconn);
+    StateType current_psi = trace(mps_contraction(v, 0, N_));
+    MatrixType new_prods(D_, Dsec_);
 
-          if (site == 0) {
-            new_prods = W_[0][confindex_[newconf[k][sorted_ind[0]]]];
-          } else {
-            new_prods = prod<diag>(
-                mps_contraction(v, 0, site),
-                W_[site % symperiod_][confindex_[newconf[k][sorted_ind[0]]]]);
-          }
+    for (std::size_t k = 0; k < nconn; k++) {
+      std::size_t nchange = tochange[k].size();
+      if (nchange > 0) {
+        sorted_ind = sort_indeces(tochange[k]);
+        int site = tochange[k][sorted_ind[0]];
 
-          for (std::size_t i = 1; i < nchange; i++) {
-            site = tochange[k][sorted_ind[i]];
-            new_prods = prod<diag>(
-                new_prods,
-                prod<diag>(mps_contraction(
-                               v, tochange[k][sorted_ind[i - 1]] + 1, site),
-                           W_[site % symperiod_]
-                             [confindex_[newconf[k][sorted_ind[i]]]]));
-          }
-          site = tochange[k][sorted_ind[nchange - 1]];
-          if (site < N_ - 1) {
-            new_prods = prod<diag>(new_prods, mps_contraction(v, site + 1, N_));
-          }
-          logvaldiffs(k) = std::log(trace<diag>(new_prods) / current_psi);
+        if (site == 0) {
+          new_prods = W_[0][confindex_[newconf[k][sorted_ind[0]]]];
+        } else {
+          new_prods = prod(
+              mps_contraction(v, 0, site),
+              W_[site % symperiod_][confindex_[newconf[k][sorted_ind[0]]]]);
         }
+
+        for (std::size_t i = 1; i < nchange; i++) {
+          site = tochange[k][sorted_ind[i]];
+          new_prods = prod(
+              new_prods,
+              prod(mps_contraction(v, tochange[k][sorted_ind[i - 1]] + 1, site),
+                   W_[site % symperiod_]
+                     [confindex_[newconf[k][sorted_ind[i]]]]));
+        }
+        site = tochange[k][sorted_ind[nchange - 1]];
+        if (site < N_ - 1) {
+          new_prods = prod(new_prods, mps_contraction(v, site + 1, N_));
+        }
+        logvaldiffs(k) = std::log(trace(new_prods) / current_psi);
       }
-      return logvaldiffs;
+    }
+    return logvaldiffs;
+  }
+
+  T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
+               const std::vector<double> &newconf,
+               const LookupType &lt) override {
+    const std::size_t nflip = toflip.size();
+    if (nflip <= 0) {
+      return T(0, 0);
+    }
+    MatrixType new_prod;
+    std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
+    int site = toflip[sorted_ind[0]];
+
+    if (site == 0) {
+      new_prod = W_[0][confindex_[newconf[sorted_ind[0]]]];
+    } else {
+      new_prod =
+          prod(lt.M(2 * (site - 1)),
+               W_[site % symperiod_][confindex_[newconf[sorted_ind[0]]]]);
     }
 
-    T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
-                 const std::vector<double> &newconf, const LookupType &lt)
-        override {
-      const std::size_t nflip = toflip.size();
-      if (nflip <= 0) {
-        return T(0, 0);
-      }
-      MatrixType new_prod;
-      std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
-      int site = toflip[sorted_ind[0]];
-
-      if (site == 0) {
-        new_prod = W_[0][confindex_[newconf[sorted_ind[0]]]];
-      } else {
-        new_prod = prod<diag>(
-            lt.M(2 * (site - 1)),
-            W_[site % symperiod_][confindex_[newconf[sorted_ind[0]]]]);
-      }
-
-      for (std::size_t k = 1; k < nflip; k++) {
-        site = toflip[sorted_ind[k]];
-        new_prod = prod<diag>(
-            new_prod,
-            prod<diag>(
-                mps_contraction(v, toflip[sorted_ind[k - 1]] + 1, site),
-                W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]));
-      }
-
-      site = toflip[sorted_ind[nflip - 1]];
-      if (site < N_ - 1) {
-        new_prod = prod<diag>(new_prod, lt.M(2 * (N_ - site) - 3));
-      }
-
-      return std::log(trace<diag>(new_prod) / trace<diag>(lt.M(2 * N_ - 2)));
+    for (std::size_t k = 1; k < nflip; k++) {
+      site = toflip[sorted_ind[k]];
+      new_prod =
+          prod(new_prod,
+               prod(mps_contraction(v, toflip[sorted_ind[k - 1]] + 1, site),
+                    W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]));
     }
 
-    // Derivative with full calculation
-    VectorType DerLog(const Eigen::VectorXd &v) override {
-      MatrixType temp_product(D_, Dsec_);
-      std::vector<MatrixType> left_prods, right_prods;
-      VectorType der = VectorType::Zero(npar_);
+    site = toflip[sorted_ind[nflip - 1]];
+    if (site < N_ - 1) {
+      new_prod = prod(new_prod, lt.M(2 * (N_ - site) - 3));
+    }
 
-      // Calculate products
-      left_prods.push_back(W_[0][confindex_[v(0)]]);
-      right_prods.push_back(W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]);
-      for (int site = 1; site < N_ - 1; site++) {
-        left_prods.push_back(prod<diag>(
-            left_prods[site - 1], W_[site % symperiod_][confindex_[v(site)]]));
-        right_prods.push_back(prod<diag>(
-            W_[(N_ - 1 - site) % symperiod_][confindex_[v(N_ - 1 - site)]],
-            right_prods[site - 1]));
-      }
-      left_prods.push_back(
-          prod<diag>(left_prods[N_ - 2],
-                     W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]));
+    return std::log(trace(new_prod) / trace(lt.M(2 * N_ - 2)));
+  }
+
+  // Derivative with full calculation
+  VectorType DerLog(const Eigen::VectorXd &v) override {
+    MatrixType temp_product(D_, Dsec_);
+    std::vector<MatrixType> left_prods, right_prods;
+    VectorType der = VectorType::Zero(npar_);
+
+    // Calculate products
+    left_prods.push_back(W_[0][confindex_[v(0)]]);
+    right_prods.push_back(W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]);
+    for (int site = 1; site < N_ - 1; site++) {
+      left_prods.push_back(prod(left_prods[site - 1],
+                                W_[site % symperiod_][confindex_[v(site)]]));
       right_prods.push_back(
-          prod<diag>(W_[0][confindex_[v(0)]], right_prods[N_ - 2]));
+          prod(W_[(N_ - 1 - site) % symperiod_][confindex_[v(N_ - 1 - site)]],
+               right_prods[site - 1]));
+    }
+    left_prods.push_back(prod(
+        left_prods[N_ - 2], W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]));
+    right_prods.push_back(prod(W_[0][confindex_[v(0)]], right_prods[N_ - 2]));
 
-      der.segment(confindex_[v(0)] * Dsq_, Dsq_) +=
-          Eigen::Map<VectorType>(right_prods[N_ - 2].transpose().data(), Dsq_);
-      for (int site = 1; site < N_ - 1; site++) {
-        temp_product =
-            prod<diag>(right_prods[N_ - site - 2], left_prods[site - 1]);
-        der.segment((d_ * (site % symperiod_) + confindex_[v(site)]) * Dsq_,
-                    Dsq_) +=
-            Eigen::Map<VectorType>(temp_product.transpose().data(), Dsq_);
-      }
-      der.segment((d_ * ((N_ - 1) % symperiod_) + confindex_[v(N_ - 1)]) * Dsq_,
+    der.segment(confindex_[v(0)] * Dsq_, Dsq_) +=
+        Eigen::Map<VectorType>(right_prods[N_ - 2].transpose().data(), Dsq_);
+    for (int site = 1; site < N_ - 1; site++) {
+      temp_product = prod(right_prods[N_ - site - 2], left_prods[site - 1]);
+      der.segment((d_ * (site % symperiod_) + confindex_[v(site)]) * Dsq_,
                   Dsq_) +=
-          Eigen::Map<VectorType>(left_prods[N_ - 2].transpose().data(), Dsq_);
+          Eigen::Map<VectorType>(temp_product.transpose().data(), Dsq_);
+    }
+    der.segment((d_ * ((N_ - 1) % symperiod_) + confindex_[v(N_ - 1)]) * Dsq_,
+                Dsq_) +=
+        Eigen::Map<VectorType>(left_prods[N_ - 2].transpose().data(), Dsq_);
 
-      return der / trace<diag>(left_prods[N_ - 1]);
+    return der / trace(left_prods[N_ - 1]);
+  }
+
+  const Hilbert &GetHilbert() const { return hilbert_; }
+
+  // Json functions
+  void to_json(json &j) const override {
+    j["Machine"]["Name"] = "MPSperiodic";
+    j["Machine"]["Length"] = N_;
+    j["Machine"]["BondDim"] = D_;
+    j["Machine"]["PhysDim"] = d_;
+    j["Machine"]["Diagonal"] = diag;
+    j["Machine"]["SymmetryPeriod"] = symperiod_;
+    for (int i = 0; i < symperiod_; i++) {
+      for (int k = 0; k < d_; k++) {
+        j["Machine"]["W" + std::to_string(d_ * i + k)] = W_[i][k];
+      }
+    }
+  }
+
+  void from_json(const json &pars) override {
+    if (pars.at("Machine").at("Name") != "MPSperiodic") {
+      throw InvalidInputError("Error while constructing MPS from Json input");
     }
 
-    const Hilbert &GetHilbert() const { return hilbert_; }
+    if (FieldExists(pars["Machine"], "Length")) {
+      N_ = pars["Machine"]["Length"];
+    }
+    if (N_ != hilbert_.Size()) {
+      throw InvalidInputError(
+          "Number of spins is incompatible with given Hilbert space");
+    }
 
-    // Json functions
-    void to_json(json & j) const override {
-      j["Machine"]["Name"] = "MPSperiodic";
-      j["Machine"]["Length"] = N_;
-      j["Machine"]["BondDim"] = D_;
-      j["Machine"]["PhysDim"] = d_;
-      j["Machine"]["Diagonal"] = diag;
-      j["Machine"]["SymmetryPeriod"] = symperiod_;
-      for (int i = 0; i < symperiod_; i++) {
-        for (int k = 0; k < d_; k++) {
-          j["Machine"]["W" + std::to_string(d_ * i + k)] = W_[i][k];
+    if (FieldExists(pars["Machine"], "PhysDim")) {
+      d_ = pars["Machine"]["PhysDim"];
+    }
+    if (d_ != hilbert_.LocalSize()) {
+      throw InvalidInputError(
+          "Number of spins is incompatible with given Hilbert space");
+    }
+
+    if (FieldExists(pars["Machine"], "BondDim")) {
+      D_ = pars["Machine"]["BondDim"];
+    } else {
+      throw InvalidInputError("Unspecified bond dimension");
+    }
+
+    if (FieldExists(pars["Machine"], "SymmetryPeriod")) {
+      symperiod_ = pars["Machine"]["SymmetryPeriod"];
+    } else {
+      // Default is symperiod = N, resp. no translational symmetry
+      symperiod_ = N_;
+    }
+
+    Init();
+
+    // Loading parameters, if defined in the input
+    from_jsonWeights(pars["Machine"]);
+  }
+
+  inline void from_jsonWeights(const json &pars) {
+    for (int i = 0; i < symperiod_; i++) {
+      for (int k = 0; k < d_; k++) {
+        if (FieldExists(pars, "W" + std::to_string(d_ * i + k))) {
+          W_[i][k] = pars["W" + std::to_string(d_ * i + k)];
         }
       }
     }
-
-    void from_json(const json &pars) override {
-      if (pars.at("Machine").at("Name") != "MPSperiodic") {
-        throw InvalidInputError("Error while constructing MPS from Json input");
-      }
-
-      if (FieldExists(pars["Machine"], "Length")) {
-        N_ = pars["Machine"]["Length"];
-      }
-      if (N_ != hilbert_.Size()) {
-        throw InvalidInputError(
-            "Number of spins is incompatible with given Hilbert space");
-      }
-
-      if (FieldExists(pars["Machine"], "PhysDim")) {
-        d_ = pars["Machine"]["PhysDim"];
-      }
-      if (d_ != hilbert_.LocalSize()) {
-        throw InvalidInputError(
-            "Number of spins is incompatible with given Hilbert space");
-      }
-
-      if (FieldExists(pars["Machine"], "BondDim")) {
-        D_ = pars["Machine"]["BondDim"];
-      } else {
-        throw InvalidInputError("Unspecified bond dimension");
-      }
-
-      if (FieldExists(pars["Machine"], "SymmetryPeriod")) {
-        symperiod_ = pars["Machine"]["SymmetryPeriod"];
-      } else {
-        // Default is symperiod = N, resp. no translational symmetry
-        symperiod_ = N_;
-      }
-
-      Init();
-
-      // Loading parameters, if defined in the input
-      from_jsonWeights(pars["Machine"]);
-    }
-
-    inline void from_jsonWeights(const json &pars) {
-      for (int i = 0; i < symperiod_; i++) {
-        for (int k = 0; k < d_; k++) {
-          if (FieldExists(pars, "W" + std::to_string(d_ * i + k))) {
-            W_[i][k] = pars["W" + std::to_string(d_ * i + k)];
-          }
-        }
-      }
-    }
-  };
+  }
+};
 
 }  // namespace netket
 
