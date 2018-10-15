@@ -14,11 +14,11 @@
 //
 // by S. Efthymiou, October 2018
 
+#include "Lookup/lookup.hpp"
+#include "Utils/all_utils.hpp"
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
-#include "Lookup/lookup.hpp"
-#include "Utils/all_utils.hpp"
 
 #ifndef NETKET_MPS_PERIODIC_HPP
 #define NETKET_MPS_PERIODIC_HPP
@@ -47,6 +47,8 @@ class MPSPeriodic : public AbstractMachine<T> {
 
   // MPS Matrices (stored as [symperiod, d, D, D] or [symperiod, d, D, 1])
   std::vector<std::vector<MatrixType>> W_;
+  // Remember where different lengths start in lt
+  std::vector<int> ltind_;
 
   // Map from Hilbert states to MPS indices
   std::map<double, int> confindex_;
@@ -61,7 +63,9 @@ class MPSPeriodic : public AbstractMachine<T> {
 
   // constructor as a machine
   explicit MPSPeriodic(const Hilbert &hilbert, const json &pars)
-      : N_(hilbert.Size()), d_(hilbert.LocalSize()), hilbert_(hilbert) {
+      : N_(hilbert.Size()),
+        d_(hilbert.LocalSize()),
+        hilbert_(hilbert) {
     from_json(pars);
   }
 
@@ -200,6 +204,8 @@ class MPSPeriodic : public AbstractMachine<T> {
 
   int Nvisible() const override { return N_; }
 
+  /**
+  // Old lookups
   void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
     // We need 2 * L matrix lookups for each string, where L is the MPS length
 
@@ -221,6 +227,27 @@ class MPSPeriodic : public AbstractMachine<T> {
       site = N_ - 1 - site;
       lt.M(i + 1) =
           prod(W_[site % symperiod_][confindex_[v(site)]], lt.M(i - 1));
+    }
+  } */
+
+  void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
+    ltind_.push_back(0);
+    // Length 1
+    for (int site = 0; site < N_; site++) {
+      _InitLookup_check(lt, site);
+      lt.M(site) = W_[site][confindex_[v(site)]];
+    }
+    ltind_.push_back(N_);
+
+    // Length >1
+    for (int length = 2; length < N_; length++) {
+      for (int site = 0; site < N_ - length; site++) {
+        _InitLookup_check(lt, ltind_[length - 1] + site);
+        lt.M(ltind_[length - 1] + site) =
+            prod(lt.M(ltind_[length - 2] + site),
+                 W_[site + length][confindex_[v(site + length)]]);
+      }
+      ltind_.push_back(ltind_[length - 1] + N_ - length);
     }
   }
 
@@ -245,7 +272,51 @@ class MPSPeriodic : public AbstractMachine<T> {
     return idx;
   }
 
-  // Check lookups later
+  void UpdateLookup(const Eigen::VectorXd &v, const std::vector<int> &tochange,
+                    const std::vector<double> &newconf,
+                    LookupType &lt) override {
+    std::size_t nchange = tochange.size();
+    if (nchange <= 0) {
+      return;
+    }
+    std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
+    Eigen::VectorXd vnew = v;
+    std::size_t k_init = 0;
+    int last_updated = 0;  // so that we don't run the same update twice
+
+    // Calculate new configuration
+    for (std::size_t k = 0; k < nchange; k++) {
+      vnew(tochange[k]) = newconf[k];
+      lt.M(tochange[k]) = W_[tochange[k]][confindex_[newconf[k]]];
+    }
+
+    for (int length = 2; length < N_; length++) {
+      for (std::size_t k = 0; k < nchange; k++) {
+        int site = tochange[sorted_ind[k]];
+        for (int i = site - length + 1; i < site + 1; i++) {
+          if (i >= 0 and ltind_[length - 1] + i > last_updated) {
+            int left_length = site - i;
+            int right_length = length - left_length - 1;
+            MatrixType temp_prod;
+            if (left_length > 0) {
+              temp_prod = prod(lt.M(ltind_[left_length - 1] + i),
+                               W_[site][confindex_[vnew(site)]]);
+            } else {
+              temp_prod = W_[site][confindex_[vnew(site)]];
+            }
+            if (right_length > 0) {
+              lt.M(ltind_[length - 1] + i) =
+                  prod(temp_prod, lt.M(ltind_[right_length - 1] + site + 1));
+            }
+            last_updated = ltind_[length - 1] + i;
+          }
+        }
+      }
+    }
+  }
+
+  /**
+  // Old lookups
   void UpdateLookup(const Eigen::VectorXd &v, const std::vector<int> &tochange,
                     const std::vector<double> &newconf,
                     LookupType &lt) override {
@@ -312,7 +383,7 @@ class MPSPeriodic : public AbstractMachine<T> {
           prod(W_[site % symperiod_][confindex_[v(site)]],
                lt.M(2 * (N_ - site) - 3));
     }
-  }
+  } */
 
   // Auxiliary function that calculates contractions from site1 to site2
   inline MatrixType mps_contraction(const Eigen::VectorXd &v, const int &site1,
@@ -329,7 +400,7 @@ class MPSPeriodic : public AbstractMachine<T> {
   }
 
   T LogVal(const Eigen::VectorXd & /* v */, const LookupType &lt) override {
-    return std::log(trace(lt.M(2 * N_ - 2)));
+    return std::log(trace(lt.M(ltind_[N_ - 1])));
   }
 
   VectorType LogValDiff(
