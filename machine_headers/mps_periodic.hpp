@@ -44,13 +44,15 @@ class MPSPeriodic : public AbstractMachine<T> {
   int npar_;
   // Period of translational symmetry (has to be a divisor of N)
   int symperiod_;
-  // Do we have odd number of spins (for trees)
-  bool isodd_;
 
   // MPS Matrices (stored as [symperiod, d, D, D] or [symperiod, d, D, 1])
   std::vector<std::vector<MatrixType>> W_;
-  // Remember where different tree levels start
+
+  // Do we have odd number of spins (for trees)
+  bool isodd_;
+  // Remember the indices where different tree levels start
   std::vector<int> treelevel_;
+  // Remember where each tree terminates to calculate full product
   std::vector<int> terminatedtree_;
 
   // Map from Hilbert states to MPS indices
@@ -321,50 +323,65 @@ class MPSPeriodic : public AbstractMachine<T> {
   void UpdateLookup(const Eigen::VectorXd &v, const std::vector<int> &tochange,
                     const std::vector<double> &newconf,
                     LookupType &lt) override {
-    if (tochange.size() <= 0) {
+    std::size_t nchange = tochange.size();
+    if (nchange <= 0) {
       return;
     }
     std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
     std::vector<int> empty_vector;
     std::vector<std::vector<int>> changes;
-    int site, level = 1;
+    int site;
+    if (isodd_ and tochange.back() == N_ - 1) {
+      nchange--;
+    }
 
     // Update first level
     changes.push_back(empty_vector);
-    for (std::size_t k = 0; k < tochange.size() - 1; k++) {
+    for (std::size_t k = 0; k < nchange; k++) {
       site = tochange[sorted_ind[k]];
-      if (tochange[sorted_ind[k + 1]] != site + 1) {
-        if ((site % 2) == 0) {
+      if (site % 2 == 0) {
+        if (tochange[sorted_ind[k + 1]] == site + 1) {
+          lt.M(site / 2) =
+              prod(W_[site][confindex_[newconf[sorted_ind[k]]]],
+                   W_[site + 1][confindex_[newconf[sorted_ind[k + 1]]]]);
+          k++;
+        } else {
           lt.M(site / 2) = prod(W_[site][confindex_[newconf[sorted_ind[k]]]],
                                 W_[site + 1][v(site + 1)]);
-        } else {
-          lt.M(site / 2) = prod(W_[site - 1][v(site - 1)],
-                                W_[site][confindex_[newconf[sorted_ind[k]]]]);
         }
       } else {
-        lt.M(site / 2) =
-            prod(W_[site][confindex_[newconf[sorted_ind[k]]]],
-                 W_[site + 1][confindex_[newconf[sorted_ind[k + 1]]]]);
-        k++;
+        lt.M(site / 2) = prod(W_[site - 1][v(site - 1)],
+                              W_[site][confindex_[newconf[sorted_ind[k]]]]);
       }
       changes.back().push_back(site / 2);
     }
-    // Write for k = tochange.size()
 
     // Update rest levels
-    for (std::size_t level = 1; level < treelevel_.size(); level++) {
+    for (std::size_t level = 0; level < treelevel_.size() - 1; level++) {
       changes.push_back(empty_vector);
-      for (std::size_t k = 0; k < changes[level - 1].size(); k++) {
-        ...
+      nchange = changes[level].size();
+      if (nchange % 2 == 1 and
+          changes[level].back() == treelevel_[level + 1] - 1) {
+        nchange--;
+      }
+      for (std::size_t k = 0; k < nchange; k++) {
+        site = changes[level][k];
+        if (site % 2 == 0) {
+          lt.M(treelevel_[level + 1] + site / 2) =
+              prod(lt.M(site), lt.M(site + 1));
+        } else {
+          lt.M(treelevel_[level + 1] + site / 2) =
+              prod(lt.M(site - 1), lt.M(site));
+        }
+        changes.back().push_back(treelevel_[level + 1] + site / 2);
       }
     }
   }
 
   /**
-  // Old lookups
-  void UpdateLookup(const Eigen::VectorXd &v, const std::vector<int> &tochange,
-                    const std::vector<double> &newconf,
-                    LookupType &lt) override {
+  // Full lookups
+  void UpdateLookup(const Eigen::VectorXd &v, const std::vector<int>
+  &tochange, const std::vector<double> &newconf, LookupType &lt) override {
     std::size_t nchange = tochange.size();
     if (nchange <= 0) {
       return;
@@ -407,9 +424,8 @@ class MPSPeriodic : public AbstractMachine<T> {
 
   /**
   // Old lookups
-  void UpdateLookup(const Eigen::VectorXd &v, const std::vector<int> &tochange,
-                    const std::vector<double> &newconf,
-                    LookupType &lt) override {
+  void UpdateLookup(const Eigen::VectorXd &v, const std::vector<int>
+  &tochange, const std::vector<double> &newconf, LookupType &lt) override {
     std::size_t nchange = tochange.size();
     if (nchange <= 0) {
       return;
@@ -485,6 +501,15 @@ class MPSPeriodic : public AbstractMachine<T> {
     return c;
   }
 
+  inline MatrixType tree_contraction(const LookupType &lt, const int &tree1,
+                                     const int &tree2) {
+    MatrixType c = identity_mat_;
+    for (int tree = tree1; tree < tree2; tree++) {
+      c = prod(c, lt.M(tree_top[tree]));
+    }
+    return c;
+  }
+
   T LogVal(const Eigen::VectorXd &v) override {
     return std::log(trace(mps_contraction(v, 0, N_)));
   }
@@ -544,6 +569,72 @@ class MPSPeriodic : public AbstractMachine<T> {
     }
     MatrixType new_prod;
     std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
+    std::vector<MatrixType *> matrices_for_prod;
+    std::vector<std::vector<int>> changed_indices;
+    std::vector<int> empty_int_vector;
+    std::vector<std::vector<MatrixType>> changed_matrices;
+    std::vector<MatrixType> empty_mat_vector;
+
+    // 0th level
+    for (std::size_t k = 0; k < nflip; k++) {
+      if
+    }
+  }
+
+  T LogValDiffOneFlip(const Eigen::VectorXd &v, const int &site,
+                      const double &newconf, const LookupType &lt) override {
+    if (isodd_ and site == N_ - 1) {
+      MatrixType old_prod = tree_contraction(lt, 0, Ntrees_);
+      return std::log(prod(old_prod, W_[N_ - 1][confindex_[newconf]]) /
+                      prod(old_prod, W_[N_ - 1][confindex_[v(N_ - 1)]]));
+    }
+    std::vector<MatrixType> changed_matrices;
+    MatrixType left_prod, right_prod;
+
+    // 0th level
+    if (site % 2 == 0) {
+      changed_matrices.push_back(prod(W_[site][confindex_[newconf]],
+                                      W_[site + 1][confindex_[v(site + 1)]]));
+    } else {
+      changed_matrices.push_back(prod(W_[site - 1][confindex_[v(site - 1)]],
+                                      W_[site][confindex_[newconf]]));
+    }
+    // Rest levels
+    for (std::size_t i = 0; tree_indices_[site].size() - 1; i++) {
+      if ((tree_indices_[site][i] - length_of_level[i]) % 2 == 0) {
+        changed_matrices.push_back(
+            prod(changed_matrices.back(),
+                 lt.M(length_of_level[i] + tree_indices_[site][i] + 1)));
+      } else {
+        changed_matrices.push_back(
+            prod(lt.M(length_of_level[i] + tree_indices_[site][i] - 1)),
+            changed_matrices.back());
+      }
+    }
+
+    left_prod = tree_contraction(lt, 0, tree_of_site[site]);
+    right_prod = tree_contraction(lt, tree_of_site[site] + 1, Ntrees_);
+    if (isodd_) {
+      right_prod = prod(old_prod, W_[N_ - 1][confindex_[v(N_ - 1)]]);
+    }
+
+    return std::log(
+        trace(prod(prod(left_prod, changed_matrices.back()), right_prod)) /
+        trace(prod(prod(left_prod, lt.M(tree_top[tree_of_site[site]])),
+                   right_prod)));
+  }
+
+  /**
+  // Old look up
+  T LogValDiff(const Eigen::VectorXd &v, const std::vector<int> &toflip,
+               const std::vector<double> &newconf,
+               const LookupType &lt) override {
+    const std::size_t nflip = toflip.size();
+    if (nflip <= 0) {
+      return T(0, 0);
+    }
+    MatrixType new_prod;
+    std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
     int site = toflip[sorted_ind[0]];
 
     if (site == 0) {
@@ -559,7 +650,8 @@ class MPSPeriodic : public AbstractMachine<T> {
       new_prod =
           prod(new_prod,
                prod(mps_contraction(v, toflip[sorted_ind[k - 1]] + 1, site),
-                    W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]));
+                    W_[site %
+  symperiod_][confindex_[newconf[sorted_ind[k]]]]));
     }
 
     site = toflip[sorted_ind[nflip - 1]];
@@ -568,7 +660,7 @@ class MPSPeriodic : public AbstractMachine<T> {
     }
 
     return std::log(trace(new_prod) / trace(lt.M(2 * N_ - 2)));
-  }
+  } */
 
   // Derivative with full calculation
   VectorType DerLog(const Eigen::VectorXd &v) override {
@@ -671,7 +763,7 @@ class MPSPeriodic : public AbstractMachine<T> {
       }
     }
   }
-};
+};  // namespace netket
 
 }  // namespace netket
 
