@@ -134,10 +134,38 @@ class MPSPeriodic : public AbstractMachine<T> {
     }
 
     // Initialize tree parameters
-    isodd_ = (N_ % 2) == 1;
+    InitTree();
 
-    // Level 0 parameters
+    // Machine creation messages
+    if (diag) {
+      InfoMessage() << "Periodic diagonal MPS machine with " << N_
+                    << " sites created" << std::endl;
+    } else {
+      InfoMessage() << "Periodic MPS machine with " << N_ << " sites created"
+                    << std::endl;
+    }
+    InfoMessage() << "Physical dimension d = " << d_
+                  << " and bond dimension D = " << D_ << std::endl;
+    if (symperiod_ < N_) {
+      InfoMessage() << "Translation invariance is used. Number of "
+                       "variational parameters is "
+                    << npar_ << " instead of " << npar_ * N_ / symperiod_
+                    << std::endl;
+    } else {
+      InfoMessage() << "Number of variational parameters is " << npar_
+                    << std::endl;
+    }
+    // Initialize map from Hilbert space states to MPS indices
+    auto localstates = hilbert_.LocalStates();
+    for (int i = 0; i < d_; i++) {
+      confindex_[localstates[i]] = i;
+    }
+  }
+
+  void InitTree() {
     int level_length = N_ / 2;
+    isodd_ = (N_ % 2) == 1;
+    // Level 0 parameters
     Ntrees_ = 0;
     start_of_level_.push_back(0);
     start_of_level_.push_back(N_ / 2);
@@ -164,61 +192,11 @@ class MPSPeriodic : public AbstractMachine<T> {
     is_level_odd_.push_back(true);
     tree_changes_init_.push_back(false);
     Ntrees_++;
-    // Add another value to start_of_level_ vector so that (level+1) does not
-    // fail
+    // Add another value to start_of_level_ vector
+    // so that (level+1) does not fail
     start_of_level_.push_back(start_of_level_.back() + 1);
 
-    // #### Debug Messages #### //
-    InfoMessage() << "Number of trees: " << Ntrees_ << std::endl;
-
-    InfoMessage() << "Start of level: ";
-    for (std::size_t k = 0; k < start_of_level_.size(); k++) {
-      std::cout << start_of_level_[k] << " ";
-    }
-    std::cout << std::endl;
-
-    InfoMessage() << "Tree top: ";
-    for (std::size_t k = 0; k < tree_top_.size(); k++) {
-      std::cout << tree_top_[k] << " ";
-    }
-    std::cout << std::endl;
-
-    InfoMessage() << "Is level odd: ";
-    for (std::size_t k = 0; k < is_level_odd_.size(); k++) {
-      std::cout << is_level_odd_[k] << " ";
-    }
-    std::cout << std::endl;
-
-    InfoMessage() << "Tree changes init: ";
-    for (std::size_t k = 0; k < tree_changes_init_.size(); k++) {
-      std::cout << tree_changes_init_[k] << " ";
-    }
-    std::cout << std::endl;
-
-    // Machine creation messages
-    if (diag) {
-      InfoMessage() << "Periodic diagonal MPS machine with " << N_
-                    << " sites created" << std::endl;
-    } else {
-      InfoMessage() << "Periodic MPS machine with " << N_ << " sites created"
-                    << std::endl;
-    }
-    InfoMessage() << "Physical dimension d = " << d_
-                  << " and bond dimension D = " << D_ << std::endl;
-    if (symperiod_ < N_) {
-      InfoMessage() << "Translation invariance is used. Number of "
-                       "variational parameters is "
-                    << npar_ << " instead of " << npar_ * N_ / symperiod_
-                    << std::endl;
-    } else {
-      InfoMessage() << "Number of variational parameters is " << npar_
-                    << std::endl;
-    }
-    // Initialize map from Hilbert space states to MPS indices
-    auto localstates = hilbert_.LocalStates();
-    for (int i = 0; i < d_; i++) {
-      confindex_[localstates[i]] = i;
-    }
+    InfoMessage() << "Last index = " << start_of_level_.back() << std::endl;
   }
 
   int Npar() const override { return npar_; }
@@ -277,35 +255,22 @@ class MPSPeriodic : public AbstractMachine<T> {
   int Nvisible() const override { return N_; }
 
   void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
-    // InfoMessage() << "InitLookup Called" << std::endl;
-    int maxI = N_;
-    if (isodd_) {
-      maxI--;
-    }
     // Create level 0
-    for (int i = 0; i < maxI; i += 2) {
-      _InitLookup_check(lt, i / 2);
-      lt.M(i / 2) = prod(W_[i % symperiod_][confindex_[v(i)]],
-                         W_[(i + 1) % symperiod_][confindex_[v(i + 1)]]);
+    for (int i = 0; i < start_of_level_[1]; i++) {
+      _InitLookup_check(lt, i);
+      lt.M(i) = prod(W_[(2 * i) % symperiod_][confindex_[v(2 * i)]],
+                     W_[(2 * i + 1) % symperiod_][confindex_[v(2 * i + 1)]]);
     }
-
-    // InfoMessage() << "InitLookup check 1" << std::endl;
 
     // Create rest levels
     for (std::size_t k = 1; k < start_of_level_.size() - 1; k++) {
-      maxI = (start_of_level_[k] - start_of_level_[k - 1]);
-      if (is_level_odd_[k]) {
-        maxI--;
-      }
-      for (int i = 0; i < maxI; i++) {
+      for (int i = 0; i < start_of_level_[k + 1] - start_of_level_[k]; i++) {
         _InitLookup_check(lt, start_of_level_[k] + i);
         lt.M(start_of_level_[k] + i) =
             prod(lt.M(start_of_level_[k - 1] + 2 * i),
                  lt.M(start_of_level_[k - 1] + 2 * i + 1));
       }
     }
-
-    // InfoMessage() << "InitLookup check 2" << std::endl;
 
     // Calculate products
     _InitLookup_check(lt, start_of_level_.back());
@@ -319,8 +284,6 @@ class MPSPeriodic : public AbstractMachine<T> {
           prod(lt.M(start_of_level_.back()),
                W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]);
     }
-
-    // InfoMessage() << "InitLookup ended" << std::endl;
   }
 
   /**
@@ -650,7 +613,7 @@ class MPSPeriodic : public AbstractMachine<T> {
 
     while (nflip > 0) {
       // Update level+1 (iterate in level)
-      // InfoMessage() << "nflip = " << nflip << std::endl;
+      //  InfoMessage() << "nflip = " << nflip << std::endl;
       //  InfoMessage() << "Updates level = " << level + 1 << std::endl;
 
       changed_ind.push_back(empty_int_vector);
@@ -686,8 +649,6 @@ class MPSPeriodic : public AbstractMachine<T> {
       }
     }
 
-    // InfoMessage() << "LogValDiff check 2" << std::endl;
-
     // Calculate products
     tree = 0;
     for (int t = 0; t < Ntrees_; t++) {
@@ -701,15 +662,14 @@ class MPSPeriodic : public AbstractMachine<T> {
     if (isodd_) {
       site = toflip[sorted_ind[nflip - 1]];
       if (site == N_ - 1) {
-        new_prod = prod(new_prod,
-                        W_[site][confindex_[newconf[sorted_ind[nflip - 1]]]]);
+        new_prod = prod(
+            new_prod,
+            W_[site % symperiod_][confindex_[newconf[sorted_ind[nflip - 1]]]]);
       } else {
-        new_prod = prod(new_prod, W_[(N_ - 1) % site][confindex_[v(N_ - 1)]]);
+        new_prod =
+            prod(new_prod, W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]);
       }
     }
-
-    // InfoMessage() << "LogValDiff ended" << std::endl;
-
     return std::log(trace(new_prod) / trace(lt.M(start_of_level_.back())));
   }
 
@@ -852,7 +812,7 @@ class MPSPeriodic : public AbstractMachine<T> {
       }
     }
   }
-};  // namespace netket
+};
 
 }  // namespace netket
 
