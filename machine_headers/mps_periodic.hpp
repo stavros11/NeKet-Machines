@@ -14,11 +14,11 @@
 //
 // by S. Efthymiou, October 2018
 
+#include "Lookup/lookup.hpp"
+#include "Utils/all_utils.hpp"
 #include <Eigen/Dense>
 #include <iostream>
 #include <vector>
-#include "Lookup/lookup.hpp"
-#include "Utils/all_utils.hpp"
 
 #ifndef NETKET_MPS_PERIODIC_HPP
 #define NETKET_MPS_PERIODIC_HPP
@@ -58,6 +58,8 @@ class MPSPeriodic : public AbstractMachine<T> {
   std::vector<int> tree_top_;
   // Index at the start of each level
   std::vector<int> start_of_level_;
+  // Initializer of vector with false values
+  std::vector<bool> tree_changes_init_;
 
   // Map from Hilbert states to MPS indices
   std::map<double, int> confindex_;
@@ -141,6 +143,7 @@ class MPSPeriodic : public AbstractMachine<T> {
     if (is_level_odd_.back()) {
       tree_top_.push_back(start_of_level_.back() - 1);
       Ntrees_++;
+	  tree_changes_init_.push_back(false);
     }
 
     level_length = level_length / 2;
@@ -150,9 +153,12 @@ class MPSPeriodic : public AbstractMachine<T> {
       if (is_level_odd_.back()) {
         tree_top_.push_back(start_of_level_.back() - 1);
         Ntrees_++;
+		tree_changes_init_.push_back(false);
       }
       level_length = level_length / 2;
     }
+	// Add another value to start_of_level_ vector so that (level+1) does not fail
+	start_of_level_.push_back(start_of_level_.back() + 1);
 
     // Machine creation messages
     if (diag) {
@@ -332,10 +338,10 @@ class MPSPeriodic : public AbstractMachine<T> {
       changed_ind.push_back(empty_vector);
       for (std::size_t k = 0; k < nchange; k++) {
         site = changed_ind[level][k];
-        if (site - start_of_level_[level]) % 2 == 0) {
+        if ((site - start_of_level_[level]) % 2 == 0) {
             lt.M(start_of_level_[level + 1] + site / 2) =
                 prod(lt.M(site), lt.M(site + 1));
-            if (k + 1 < nflip and changed_ind[level][k + 1] == site + 1) {
+            if (k + 1 < nchange and changed_ind[level][k + 1] == site + 1) {
               k++;
             }
           }
@@ -345,7 +351,7 @@ class MPSPeriodic : public AbstractMachine<T> {
         }
       }
       changed_ind.back().push_back(start_of_level_[level + 1] + site / 2);
-      nflip = changed_ind.back().size();
+	  nchange = changed_ind.back().size();
       level++;
       // Check if level 1 is odd and whether last matrix was changed
       if (is_level_odd_[level] and
@@ -357,7 +363,7 @@ class MPSPeriodic : public AbstractMachine<T> {
     // Update products
     new_prod = lt.M(tree_top_[0]);
     for (int t = 1; t < Ntrees_; t++) {
-      new_prod = prod(new_prod, lt.M(tree_top[t]));
+      new_prod = prod(new_prod, lt.M(tree_top_[t]));
     }
     if (isodd_) {
       new_prod =
@@ -505,10 +511,10 @@ class MPSPeriodic : public AbstractMachine<T> {
       return T(0, 0);
     }
     std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
-    MatrixType new_prods = identity_mat_;
+    MatrixType new_prod = identity_mat_;
 
     std::vector<bool> tree_changes = tree_changes_init_;
-    std::vector<int> emtpy_int_vector, tree_top;  // Keep indices of tree tops
+    std::vector<int> empty_int_vector, tree_top;  // Keep indices of tree tops
     std::vector<MatrixType> empty_mat_vector;
     std::vector<std::vector<int>> changed_ind;
     std::vector<std::vector<MatrixType>> changed_mat;
@@ -593,23 +599,23 @@ class MPSPeriodic : public AbstractMachine<T> {
     tree = 0;
     for (int t = 0; t < Ntrees_; t++) {
       if (tree_changes[t]) {
-        new_prods = prod(new_prods, changed_mat[tree_top[tree]].back());
+        new_prod = prod(new_prod, changed_mat[tree_top[tree]].back());
         tree++;
       } else {
-        new_prods = prod(new_prods, lt.M(tree_top_[t]));
+        new_prod = prod(new_prod, lt.M(tree_top_[t]));
       }
     }
     if (isodd_) {
       site = toflip[sorted_ind[nflip - 1]];
       if (site == N_ - 1) {
-        new_prods = prod(new_prod,
+        new_prod = prod(new_prod,
                          W_[site][confindex_[newconf[sorted_ind[nflip - 1]]]]);
       } else {
-        new_prods = prod(new_prod, W_[(N_ - 1) % site][confindex_[v(N_ - 1)]]);
+        new_prod = prod(new_prod, W_[(N_ - 1) % site][confindex_[v(N_ - 1)]]);
       }
     }
 
-    return std::log(trace(new_prods) / lt.V(0)(0));
+    return std::log(trace(new_prod) / lt.V(0)(0));
   }
 
   /**
