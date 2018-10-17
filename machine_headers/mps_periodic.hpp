@@ -134,8 +134,10 @@ class MPSPeriodic : public AbstractMachine<T> {
     }
 
     // Initialize tree parameters
-    int level_length = N_ / 2;
     isodd_ = (N_ % 2) == 1;
+
+    // Level 0 parameters
+    int level_length = N_ / 2;
     Ntrees_ = 0;
     start_of_level_.push_back(0);
     start_of_level_.push_back(N_ / 2);
@@ -145,21 +147,53 @@ class MPSPeriodic : public AbstractMachine<T> {
       Ntrees_++;
       tree_changes_init_.push_back(false);
     }
-
+    // Rest levels
     level_length = level_length / 2;
-    while (level_length > 0) {
+    while (level_length > 1) {
       start_of_level_.push_back(start_of_level_.back() + level_length);
-      is_level_odd_.push_back(start_of_level_.back() % 2 == 1);
+      is_level_odd_.push_back(level_length % 2 == 1);
       if (is_level_odd_.back()) {
-        tree_top_.push_back(start_of_level_.back() - 1);
+        tree_top_.insert(tree_top_.begin(), start_of_level_.back() - 1);
         Ntrees_++;
         tree_changes_init_.push_back(false);
       }
       level_length = level_length / 2;
     }
+    // Fix upper level
+    tree_top_.insert(tree_top_.begin(), start_of_level_.back());
+    is_level_odd_.push_back(true);
+    tree_changes_init_.push_back(false);
+    Ntrees_++;
     // Add another value to start_of_level_ vector so that (level+1) does not
     // fail
     start_of_level_.push_back(start_of_level_.back() + 1);
+
+    // #### Debug Messages #### //
+    InfoMessage() << "Number of trees: " << Ntrees_ << std::endl;
+
+    InfoMessage() << "Start of level: ";
+    for (std::size_t k = 0; k < start_of_level_.size(); k++) {
+      std::cout << start_of_level_[k] << " ";
+    }
+    std::cout << std::endl;
+
+    InfoMessage() << "Tree top: ";
+    for (std::size_t k = 0; k < tree_top_.size(); k++) {
+      std::cout << tree_top_[k] << " ";
+    }
+    std::cout << std::endl;
+
+    InfoMessage() << "Is level odd: ";
+    for (std::size_t k = 0; k < is_level_odd_.size(); k++) {
+      std::cout << is_level_odd_[k] << " ";
+    }
+    std::cout << std::endl;
+
+    InfoMessage() << "Tree changes init: ";
+    for (std::size_t k = 0; k < tree_changes_init_.size(); k++) {
+      std::cout << tree_changes_init_[k] << " ";
+    }
+    std::cout << std::endl;
 
     // Machine creation messages
     if (diag) {
@@ -243,7 +277,7 @@ class MPSPeriodic : public AbstractMachine<T> {
   int Nvisible() const override { return N_; }
 
   void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
-    InfoMessage() << "InitLookup Called" << std::endl;
+    // InfoMessage() << "InitLookup Called" << std::endl;
     int maxI = N_;
     if (isodd_) {
       maxI--;
@@ -255,7 +289,7 @@ class MPSPeriodic : public AbstractMachine<T> {
                          W_[(i + 1) % symperiod_][confindex_[v(i + 1)]]);
     }
 
-    InfoMessage() << "InitLookup check 1" << std::endl;
+    // InfoMessage() << "InitLookup check 1" << std::endl;
 
     // Create rest levels
     for (std::size_t k = 1; k < start_of_level_.size() - 1; k++) {
@@ -271,7 +305,7 @@ class MPSPeriodic : public AbstractMachine<T> {
       }
     }
 
-    InfoMessage() << "InitLookup check 2" << std::endl;
+    // InfoMessage() << "InitLookup check 2" << std::endl;
 
     // Calculate products
     _InitLookup_check(lt, start_of_level_.back());
@@ -286,7 +320,7 @@ class MPSPeriodic : public AbstractMachine<T> {
                W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]);
     }
 
-    InfoMessage() << "InitLookup ended" << std::endl;
+    // InfoMessage() << "InitLookup ended" << std::endl;
   }
 
   /**
@@ -343,6 +377,7 @@ class MPSPeriodic : public AbstractMachine<T> {
     if (nchange <= 0) {
       return;
     }
+
     std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
     std::vector<int> empty_vector;
     std::vector<std::vector<int>> changed_ind;
@@ -386,18 +421,18 @@ class MPSPeriodic : public AbstractMachine<T> {
       changed_ind.push_back(empty_vector);
       for (std::size_t k = 0; k < nchange; k++) {
         site = changed_ind[level][k];
+        int ind2upd =
+            start_of_level_[level + 1] + (site - start_of_level_[level]) / 2;
         if ((site - start_of_level_[level]) % 2 == 0) {
-          lt.M(start_of_level_[level + 1] + site / 2) =
-              prod(lt.M(site), lt.M(site + 1));
+          lt.M(ind2upd) = prod(lt.M(site), lt.M(site + 1));
           if (k + 1 < nchange and changed_ind[level][k + 1] == site + 1) {
             k++;
           }
         } else {
-          lt.M(start_of_level_[level + 1] + site / 2) =
-              prod(lt.M(site - 1), lt.M(site));
+          lt.M(ind2upd) = prod(lt.M(site - 1), lt.M(site));
         }
+        changed_ind.back().push_back(ind2upd);
       }
-      changed_ind.back().push_back(start_of_level_[level + 1] + site / 2);
       nchange = changed_ind.back().size();
       level++;
       // Check if level 1 is odd and whether last matrix was changed
@@ -558,6 +593,9 @@ class MPSPeriodic : public AbstractMachine<T> {
     if (nflip <= 0) {
       return T(0, 0);
     }
+
+    // InfoMessage() << "LogValDiff called" << std::endl;
+
     std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
     MatrixType new_prod = identity_mat_;
 
@@ -567,12 +605,13 @@ class MPSPeriodic : public AbstractMachine<T> {
     std::vector<std::vector<int>> changed_ind;
     std::vector<std::vector<MatrixType>> changed_mat;
 
-    int tree = Ntrees_ - 1, level = 0;
-    int site = toflip[sorted_ind[nflip - 1]];
+    int tree = Ntrees_ - 1, level = 0, site = toflip[sorted_ind[nflip - 1]];
 
     if (isodd_ and site == N_ - 1) {
       nflip--;
     }
+
+    // InfoMessage() << "LogValDiff check 1, toflip = " << site << std::endl;
 
     // Update level 0 (iterate in MPS)
     // MPS is "level -1"
@@ -611,6 +650,9 @@ class MPSPeriodic : public AbstractMachine<T> {
 
     while (nflip > 0) {
       // Update level+1 (iterate in level)
+      // InfoMessage() << "nflip = " << nflip << std::endl;
+      //  InfoMessage() << "Updates level = " << level + 1 << std::endl;
+
       changed_ind.push_back(empty_int_vector);
       changed_mat.push_back(empty_mat_vector);
       for (std::size_t k = 0; k < nflip; k++) {
@@ -628,7 +670,8 @@ class MPSPeriodic : public AbstractMachine<T> {
           changed_mat.back().push_back(
               prod(lt.M(site - 1), changed_mat[level][k]));
         }
-        changed_ind.back().push_back(start_of_level_[level + 1] + site / 2);
+        changed_ind.back().push_back(start_of_level_[level + 1] +
+                                     (site - start_of_level_[level]) / 2);
       }
       nflip = changed_ind.back().size();
       level++;
@@ -636,12 +679,14 @@ class MPSPeriodic : public AbstractMachine<T> {
       if (is_level_odd_[level]) {
         if (changed_ind.back().back() == start_of_level_[level + 1] - 1) {
           tree_changes[tree] = true;
-          tree_top.push_back(level);
+          tree_top.insert(tree_top.begin(), level);
           nflip--;
         }
         tree--;
       }
     }
+
+    // InfoMessage() << "LogValDiff check 2" << std::endl;
 
     // Calculate products
     tree = 0;
@@ -662,6 +707,8 @@ class MPSPeriodic : public AbstractMachine<T> {
         new_prod = prod(new_prod, W_[(N_ - 1) % site][confindex_[v(N_ - 1)]]);
       }
     }
+
+    // InfoMessage() << "LogValDiff ended" << std::endl;
 
     return std::log(trace(new_prod) / trace(lt.M(start_of_level_.back())));
   }
