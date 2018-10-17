@@ -243,23 +243,35 @@ class MPSPeriodic : public AbstractMachine<T> {
   int Nvisible() const override { return N_; }
 
   void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
-    // Create level 0
-    for (int i = 0; i < N_ / 2; i++) {
-      _InitLookup_check(lt, i);
-      lt.M(i) = prod(W_[(2 * i) % symperiod_][confindex_[v(2 * i)]],
-                     W_[(2 * i + 1) % symperiod_][confindex_[v(2 * i + 1)]]);
-      i++;
+    InfoMessage() << "InitLookup Called" << std::endl;
+    int maxI = N_;
+    if (isodd_) {
+      maxI--;
     }
+    // Create level 0
+    for (int i = 0; i < maxI; i += 2) {
+      _InitLookup_check(lt, i / 2);
+      lt.M(i / 2) = prod(W_[i % symperiod_][confindex_[v(i)]],
+                         W_[(i + 1) % symperiod_][confindex_[v(i + 1)]]);
+    }
+
+    InfoMessage() << "InitLookup check 1" << std::endl;
 
     // Create rest levels
     for (std::size_t k = 1; k < start_of_level_.size() - 1; k++) {
-      for (int i = 0; i < (start_of_level_[k] - start_of_level_[k - 1]); i++) {
+      maxI = (start_of_level_[k] - start_of_level_[k - 1]);
+      if (is_level_odd_[k]) {
+        maxI--;
+      }
+      for (int i = 0; i < maxI; i++) {
         _InitLookup_check(lt, start_of_level_[k] + i);
         lt.M(start_of_level_[k] + i) =
             prod(lt.M(start_of_level_[k - 1] + 2 * i),
                  lt.M(start_of_level_[k - 1] + 2 * i + 1));
       }
     }
+
+    InfoMessage() << "InitLookup check 2" << std::endl;
 
     // Calculate products
     _InitLookup_check(lt, start_of_level_.back());
@@ -273,6 +285,8 @@ class MPSPeriodic : public AbstractMachine<T> {
           prod(lt.M(start_of_level_.back()),
                W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]);
     }
+
+    InfoMessage() << "InitLookup ended" << std::endl;
   }
 
   /**
@@ -351,11 +365,11 @@ class MPSPeriodic : public AbstractMachine<T> {
         } else {
           lt.M(site / 2) =
               prod(W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]],
-                   W_[(site + 1) % symperiod_][v(site + 1)]);
+                   W_[(site + 1) % symperiod_][confindex_[v(site + 1)]]);
         }
       } else {
         lt.M(site / 2) =
-            prod(W_[(site - 1) % symperiod_][v(site - 1)],
+            prod(W_[(site - 1) % symperiod_][confindex_[v(site - 1)]],
                  W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
       }
       changed_ind.back().push_back(site / 2);
