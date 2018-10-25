@@ -45,21 +45,17 @@ class MPSPeriodic : public AbstractMachine<T> {
   // Period of translational symmetry (has to be a divisor of N)
   int symperiod_;
 
+  // Used for tree look up
+  int Nleaves_;
+  // Map from site that changes to the corresponding "leaves"
+  // Shape (N_, nr of leaves for the corresponding site)
+  std::vector<std::vector<int>> leaves_of_site_;
+  // Contractions needed to produce each leaf
+  // Shape (total leaves, 2)
+  std::vector<std::vector<int>> leaf_contractions_;
+
   // MPS Matrices (stored as [symperiod, d, D, D] or [symperiod, d, D, 1])
   std::vector<std::vector<MatrixType>> W_;
-
-  // Used for tree look up
-  bool isodd_;
-  // Which levels are odd
-  std::vector<bool> is_level_odd_;
-  // Number of trees
-  int Ntrees_;
-  // Top of trees used for last product
-  std::vector<int> tree_top_;
-  // Index at the start of each level
-  std::vector<int> start_of_level_;
-  // Initializer of vector with false values
-  std::vector<bool> tree_changes_init_;
 
   // Map from Hilbert states to MPS indices
   std::map<double, int> confindex_;
@@ -124,7 +120,6 @@ class MPSPeriodic : public AbstractMachine<T> {
     MatrixType init_mat = MatrixType::Zero(D_, Dsec_);
     Dsq_ = D_ * Dsec_;
     npar_ = symperiod_ * d_ * Dsq_;
-    isodd_ = (N_ % 2) == 1;
 
     for (int site = 0; site < symperiod_; site++) {
       W_.push_back(pushback_vec);
@@ -163,40 +158,61 @@ class MPSPeriodic : public AbstractMachine<T> {
   }
 
   void InitTree() {
-    int level_length = N_ / 2;
-    isodd_ = (N_ % 2) == 1;
-    // Level 0 parameters
-    Ntrees_ = 0;
-    start_of_level_.push_back(0);
-    start_of_level_.push_back(N_ / 2);
-    is_level_odd_.push_back(level_length % 2 == 1);
-    if (is_level_odd_.back()) {
-      tree_top_.push_back(start_of_level_.back() - 1);
-      Ntrees_++;
-      tree_changes_init_.push_back(false);
-    }
-    // Rest levels
-    level_length = level_length / 2;
-    while (level_length > 1) {
-      start_of_level_.push_back(start_of_level_.back() + level_length);
-      is_level_odd_.push_back(level_length % 2 == 1);
-      if (is_level_odd_.back()) {
-        tree_top_.insert(tree_top_.begin(), start_of_level_.back() - 1);
-        Ntrees_++;
-        tree_changes_init_.push_back(false);
-      }
-      level_length = level_length / 2;
-    }
-    // Fix upper level
-    tree_top_.insert(tree_top_.begin(), start_of_level_.back());
-    is_level_odd_.push_back(true);
-    tree_changes_init_.push_back(false);
-    Ntrees_++;
-    // Add another value to start_of_level_ vector
-    // so that (level+1) does not fail
-    start_of_level_.push_back(start_of_level_.back() + 1);
+    // Initializes vectors used for tree look up tables
+    // leaves_of_site_ and leaf_contractions_
 
-    InfoMessage() << "Last index = " << start_of_level_.back() << std::endl;
+    std::vector<int> above, two_vector(2), level_start;
+    bool available = false;
+    int length = N_, level = 1, available_ind;
+
+    level_start.push_back(0);
+    level_start.push_back(N_);
+
+    while (length > 1 or available) {
+      for (int i = 0; i < length - 1; i += 2) {
+        above.push_back(level_start[level] + i);
+        above.push_back(level_start[level] + i);
+
+        two_vector[0] = level_start[level - 1] + i;
+        two_vector[1] = level_start[level - 1] + i + 1;
+        leaf_contractions_.push_back(two_vector);
+      }
+      if (length % 2 == 1) {
+        if (available) {
+          above.push_back(level_start[level] + length - 1);
+          above.insert(above.begin() + available_ind,
+                       level_start[level] + length - 1);
+
+          two_vector[0] = level_start[level - 1] + length - 1;
+          two_vector[1] = level_start[level - 1] + length;
+          leaf_contractions_.push_back(two_vector);
+
+          available = false;
+        } else {
+          available = true;
+          available_ind = length - 1;
+        }
+      }
+      // the length of the level we just created
+      length = length / 2;
+      // the start of the next level
+      level_start.push_back(level_start.back() + length);
+      level++;
+    }
+    Nleaves_ = level_start.back();
+
+    // Transform above vector to leaves_of_site_ vector
+    for (int i = 0; i < N_; i++) {
+      std::vector<int> leaves;
+      leaves.push_back(i);
+      while (leaves.back() < Nleaves_) {
+        leaves.push_back(above[leaves.back()]);
+      }
+      leaves_of_site_.push_back(leaves);
+      leaves.clear();
+    }
+
+    Nleaves_ += -N_;
   }
 
   int Npar() const override { return npar_; }
@@ -255,34 +271,19 @@ class MPSPeriodic : public AbstractMachine<T> {
   int Nvisible() const override { return N_; }
 
   void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
-    // Create level 0
-    for (int i = 0; i < start_of_level_[1]; i++) {
-      _InitLookup_check(lt, i);
-      lt.M(i) = prod(W_[(2 * i) % symperiod_][confindex_[v(2 * i)]],
-                     W_[(2 * i + 1) % symperiod_][confindex_[v(2 * i + 1)]]);
-    }
-
-    // Create rest levels
-    for (std::size_t k = 1; k < start_of_level_.size() - 1; k++) {
-      for (int i = 0; i < start_of_level_[k + 1] - start_of_level_[k]; i++) {
-        _InitLookup_check(lt, start_of_level_[k] + i);
-        lt.M(start_of_level_[k] + i) =
-            prod(lt.M(start_of_level_[k - 1] + 2 * i),
-                 lt.M(start_of_level_[k - 1] + 2 * i + 1));
+    for (int k = 0; k < Nleaves_; k++) {
+      std::vector<MatrixType *> m(2);
+      for (int i = 0; i < 2; i++) {
+        if (leaf_contractions_[k][i] < N_) {
+          m[i] = &(W_[leaf_contractions_[k][i] % symperiod_]
+                     [confindex_[v(leaf_contractions_[k][i])]]);
+        } else {
+          m[i] = &(lt.M(leaf_contractions_[k][i] - N_));
+        }
       }
-    }
 
-    // Calculate products
-    _InitLookup_check(lt, start_of_level_.back());
-    lt.M(start_of_level_.back()) = lt.M(tree_top_[0]);
-    for (int i = 1; i < Ntrees_; i++) {
-      lt.M(start_of_level_.back()) =
-          prod(lt.M(start_of_level_.back()), lt.M(tree_top_[i]));
-    }
-    if (isodd_) {
-      lt.M(start_of_level_.back()) =
-          prod(lt.M(start_of_level_.back()),
-               W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]);
+      _InitLookup_check(lt, k);
+      lt.M(k) = prod(*(m[0]), *(m[1]));
     }
   }
 
@@ -303,7 +304,8 @@ class MPSPeriodic : public AbstractMachine<T> {
     for (int i = 2; i < 2 * N_; i += 2) {
       _InitLookup_check(lt, i);
       int site = i / 2;
-      lt.M(i) = prod(lt.M(i - 2), W_[(site % symperiod_)][confindex_[v(site)]]);
+      lt.M(i) = prod(lt.M(i - 2), W_[(site %
+  symperiod_)][confindex_[v(site)]]);
 
       _InitLookup_check(lt, i + 1);
       site = N_ - 1 - site;
@@ -342,79 +344,70 @@ class MPSPeriodic : public AbstractMachine<T> {
     }
 
     std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
-    std::vector<int> empty_vector;
-    std::vector<std::vector<int>> changed_ind;
-    int site = tochange[sorted_ind[nchange - 1]], level = 0;
-    if (isodd_ and site == N_ - 1) {
-      nchange--;
-    }
+    std::vector<int> updated_leaves_index;
+    std::map<int, MatrixType *> ltpM;
+    int site;
 
-    // Update first level
-    changed_ind.push_back(empty_vector);
+    // Add tochanges in the map
     for (std::size_t k = 0; k < nchange; k++) {
       site = tochange[sorted_ind[k]];
-      if (site % 2 == 0) {
-        if (k + 1 < nchange and tochange[sorted_ind[k + 1]] == site + 1) {
-          lt.M(site / 2) =
-              prod(W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]],
-                   W_[(site + 1) % symperiod_]
-                     [confindex_[newconf[sorted_ind[k + 1]]]]);
-          k++;
-        } else {
-          lt.M(site / 2) =
-              prod(W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]],
-                   W_[(site + 1) % symperiod_][confindex_[v(site + 1)]]);
-        }
-      } else {
-        lt.M(site / 2) =
-            prod(W_[(site - 1) % symperiod_][confindex_[v(site - 1)]],
-                 W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
-      }
-      changed_ind.back().push_back(site / 2);
-    }
-    nchange = changed_ind.back().size();
-    // Check if level 0 is odd and whether last matrix was changed
-    if (is_level_odd_[0] and
-        changed_ind.back().back() == start_of_level_[1] - 1) {
-      nchange--;
+      ltpM[site] = &(W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
     }
 
-    while (nchange > 0) {
-      // Update level+1 (iterate in level)
-      changed_ind.push_back(empty_vector);
-      for (std::size_t k = 0; k < nchange; k++) {
-        site = changed_ind[level][k];
-        int ind2upd =
-            start_of_level_[level + 1] + (site - start_of_level_[level]) / 2;
-        if ((site - start_of_level_[level]) % 2 == 0) {
-          lt.M(ind2upd) = prod(lt.M(site), lt.M(site + 1));
-          if (k + 1 < nchange and changed_ind[level][k + 1] == site + 1) {
-            k++;
+    // Add leaves for the first site
+    site = tochange[sorted_ind[0]];
+    for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
+      updated_leaves_index.push_back(leaves_of_site_[site][l] - N_);
+      ltpM[leaves_of_site_[site][l]] = &(lt.M(leaves_of_site_[site][l] - N_));
+      // Add matrices needed for contraction in the map
+      // if they do not already exist
+      for (int i = 0; i < 2; i++) {
+        int leaf_nr = leaf_contractions_[leaves_of_site_[site][l] - N_][i];
+        if (ltpM.count(leaf_nr) == 0) {
+          if (leaf_nr < N_) {
+            ltpM[leaf_nr] = &(W_[leaf_nr % symperiod_][confindex_[v(leaf_nr)]]);
+          } else {
+            ltpM[leaf_nr] = &(lt.M(leaf_nr - N_));
           }
-        } else {
-          lt.M(ind2upd) = prod(lt.M(site - 1), lt.M(site));
         }
-        changed_ind.back().push_back(ind2upd);
-      }
-      nchange = changed_ind.back().size();
-      level++;
-      // Check if level 1 is odd and whether last matrix was changed
-      if (is_level_odd_[level] and
-          changed_ind.back().back() == start_of_level_[level + 1] - 1) {
-        nchange--;
       }
     }
 
-    // Update products
-    lt.M(start_of_level_.back()) = lt.M(tree_top_[0]);
-    for (int t = 1; t < Ntrees_; t++) {
-      lt.M(start_of_level_.back()) =
-          prod(lt.M(start_of_level_.back()), lt.M(tree_top_[t]));
+    // Add leaves for the rest sites that flip
+    for (std::size_t k = 1; k < nchange; k++) {
+      site = tochange[sorted_ind[k]];
+      for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
+        std::size_t m = 0;
+        while (updated_leaves_index[m] < leaves_of_site_[site][l]) {
+          m++;
+        }
+        if (updated_leaves_index[m] != leaves_of_site_[site][l]) {
+          updated_leaves_index.insert(updated_leaves_index.begin() + m,
+                                      leaves_of_site_[site][l] - N_);
+          ltpM[leaves_of_site_[site][l]] =
+              &(lt.M(leaves_of_site_[site][l] - N_));
+
+          // Add matrices needed for contraction in the map
+          for (int i = 0; i < 2; i++) {
+            int leaf_nr = leaf_contractions_[leaves_of_site_[site][l] - N_][i];
+            if (ltpM.count(leaf_nr) == 0) {
+              if (leaf_nr < N_) {
+                ltpM[leaf_nr] =
+                    &(W_[leaf_nr & symperiod_][confindex_[v(leaf_nr)]]);
+              } else {
+                ltpM[leaf_nr] = &(lt.M(leaf_nr - N_));
+              }
+            }
+          }
+        }
+      }
     }
-    if (isodd_) {
-      lt.M(start_of_level_.back()) =
-          prod(lt.M(start_of_level_.back()),
-               W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]);
+
+    // Do updates
+    for (std::size_t k = 0; k < updated_leaves_index.size(); k++) {
+      lt.M(updated_leaves_index[k]) =
+          prod(*ltpM[leaf_contractions_[updated_leaves_index[k]][0]],
+               *ltpM[leaf_contractions_[updated_leaves_index[k]][1]]);
     }
   }
 
@@ -503,7 +496,7 @@ class MPSPeriodic : public AbstractMachine<T> {
 
   T LogVal(const Eigen::VectorXd & /* v */, const LookupType &lt) override {
     // return std::log(trace(lt.M(2 * N_ - 2)));
-    return std::log(trace(lt.M(start_of_level_.back())));
+    return std::log(trace(lt.M(Nleaves_ - 1)));
   }
 
   VectorType LogValDiff(
@@ -556,134 +549,86 @@ class MPSPeriodic : public AbstractMachine<T> {
     if (nflip <= 0) {
       return T(0, 0);
     }
-
-    // InfoMessage() << "LogValDiff called" << std::endl;
-
+    MatrixType empty_matrix(D_, Dsec_);
     std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
-    MatrixType new_prod = identity_mat_;
+    std::vector<MatrixType> updated_leaves;
+    std::vector<int> updated_leaves_index;
+    std::vector<const MatrixType *> two_vector(2);
+    std::vector<std::vector<const MatrixType *>> updated_leaves_contractions;
+    // Map from leaf number to the corresponding matrix (changed or not)
+    std::map<int, MatrixType *> ltpM;
+    int site;
 
-    // for (std::size_t k = 0; k < nflip; k++) {
-    //  std::cout << toflip[sorted_ind[k]] << " ";
-    //}
-    // std::cout << std::endl;
-
-    std::vector<bool> tree_changes = tree_changes_init_;
-    std::vector<int> empty_int_vector, tree_top;  // Keep indices of tree tops
-    std::vector<MatrixType> empty_mat_vector;
-    std::vector<std::vector<int>> changed_ind;
-    std::vector<std::vector<MatrixType>> changed_mat;
-
-    int tree = Ntrees_ - 1, level = 0, site = toflip[sorted_ind[nflip - 1]];
-
-    if (isodd_ and site == N_ - 1) {
-      nflip--;
-    }
-
-    for (std::size_t k = 0; k < nflip; k++) {
-      std::cout << toflip[sorted_ind[k]] << " ";
-    }
-    std::cout << std::endl;
-
-    // Update level 0 (iterate in MPS)
-    // MPS is "level -1"
-    changed_ind.push_back(empty_int_vector);
-    changed_mat.push_back(empty_mat_vector);
+    // Add toflips in the map
     for (std::size_t k = 0; k < nflip; k++) {
       site = toflip[sorted_ind[k]];
-      if (site % 2 == 0) {
-        if (k + 1 < nflip and toflip[sorted_ind[k + 1]] == site + 1) {
-          changed_mat.back().push_back(
-              prod(W_[site % symperiod_][confindex_[newconf[k]]],
-                   W_[(site + 1) % symperiod_][confindex_[newconf[k + 1]]]));
-          k++;
-        } else {
-          changed_mat.back().push_back(
-              prod(W_[site % symperiod_][confindex_[newconf[k]]],
-                   W_[(site + 1) % symperiod_][confindex_[v(site + 1)]]));
-        }
-      } else {
-        changed_mat.back().push_back(
-            prod(W_[(site - 1) % symperiod_][confindex_[v(site - 1)]],
-                 W_[site % symperiod_][confindex_[newconf[k]]]));
-      }
-      changed_ind.back().push_back(site / 2);
-    }
-    nflip = changed_ind.back().size();
-    // Check if level 0 is odd and whether last matrix was changed
-    if (is_level_odd_[0]) {
-      if (changed_ind.back().back() == start_of_level_[1] - 1) {
-        tree_changes[tree] = true;
-        tree_top.push_back(level);
-        nflip--;
-      }
-      tree--;
+      ltpM[site] = &(W_[site][confindex_[newconf[sorted_ind[k]]]]);
     }
 
-    while (nflip > 0) {
-      // Update level+1 (iterate in level)
-      //  InfoMessage() << "nflip = " << nflip << std::endl;
-      //  InfoMessage() << "Updates level = " << level + 1 << std::endl;
-      for (std::size_t k = 0; k < nflip; k++) {
-        std::cout << changed_ind[level][k] << " ";
-      }
-      std::cout << std::endl;
-
-      changed_ind.push_back(empty_int_vector);
-      changed_mat.push_back(empty_mat_vector);
-      for (std::size_t k = 0; k < nflip; k++) {
-        site = changed_ind[level][k];
-        if ((site - start_of_level_[level]) % 2 == 0) {
-          if (k + 1 < nflip and changed_ind[level][k + 1] == site + 1) {
-            changed_mat.back().push_back(
-                prod(changed_mat[level][k], changed_mat[level][k + 1]));
-            k++;
+    // Add leaves for the first site
+    site = toflip[sorted_ind[0]];
+    for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
+      updated_leaves.push_back(empty_matrix);
+      updated_leaves_index.push_back(leaves_of_site_[site][l] - N_);
+      ltpM[leaves_of_site_[site][l]] = &(updated_leaves.back());
+      // Add matrices needed for contraction in the map
+      // if they do not already exist
+      for (int i = 0; i < 2; i++) {
+        int leaf_nr = leaf_contractions_[leaves_of_site_[site][l] - N_][i];
+        if (ltpM.count(leaf_nr) == 0) {
+          if (leaf_nr < N_) {
+            two_vector[i] = &(W_[leaf_nr % symperiod_][confindex_[v(leaf_nr)]]);
           } else {
-            changed_mat.back().push_back(
-                prod(changed_mat[level][k], lt.M(site + 1)));
+            two_vector[i] = &(lt.M(leaf_nr - N_));
           }
         } else {
-          changed_mat.back().push_back(
-              prod(lt.M(site - 1), changed_mat[level][k]));
+          two_vector[i] = ltpM[leaf_nr];
         }
-        changed_ind.back().push_back(start_of_level_[level + 1] +
-                                     (site - start_of_level_[level]) / 2);
       }
-      nflip = changed_ind.back().size();
-      level++;
-      // Check if level+1 is odd and whether last matrix was changed
-      if (is_level_odd_[level]) {
-        if (changed_ind.back().back() == start_of_level_[level + 1] - 1) {
-          tree_changes[tree] = true;
-          tree_top.insert(tree_top.begin(), level);
-          nflip--;
+      updated_leaves_contractions.push_back(two_vector);
+    }
+
+    // Add leaves for the rest sites that flip
+    for (std::size_t k = 1; k < nflip; k++) {
+      site = toflip[sorted_ind[k]];
+      for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
+        std::size_t m = 0;
+        while (updated_leaves_index[m] < leaves_of_site_[site][l]) {
+          m++;
         }
-        tree--;
+        if (updated_leaves_index[m] != leaves_of_site_[site][l]) {
+          updated_leaves_index.insert(updated_leaves_index.begin() + m,
+                                      leaves_of_site_[site][l] - N_);
+          updated_leaves.insert(updated_leaves.begin() + m, empty_matrix);
+          ltpM[leaves_of_site_[site][l]] = &(updated_leaves[m]);
+
+          // Add matrices needed for contraction in the map
+          for (int i = 0; i < 2; i++) {
+            int leaf_nr = leaf_contractions_[leaves_of_site_[site][l] - N_][i];
+            if (ltpM.count(leaf_nr) == 0) {
+              if (leaf_nr < N_) {
+                two_vector[i] =
+                    &(W_[leaf_nr % symperiod_][confindex_[v(leaf_nr)]]);
+              } else {
+                two_vector[i] = &(lt.M(leaf_nr - N_));
+              }
+            } else {
+              two_vector[i] = ltpM[leaf_nr];
+            }
+          }
+          updated_leaves_contractions.insert(
+              updated_leaves_contractions.begin() + m, two_vector);
+        }
       }
     }
 
-    // Calculate products
-    tree = 0;
-    for (int t = 0; t < Ntrees_; t++) {
-      if (tree_changes[t]) {
-        new_prod = prod(new_prod, changed_mat[tree_top[tree]].back());
-        InfoMessage() << "Updated matrix used: " << t << std::endl;
-        tree++;
-      } else {
-        new_prod = prod(new_prod, lt.M(tree_top_[t]));
-      }
+    // Update products
+    for (std::size_t k = 0; k < updated_leaves.size(); k++) {
+      updated_leaves[k] = prod(*(updated_leaves_contractions[k][0]),
+                               *(updated_leaves_contractions[k][1]));
     }
-    if (isodd_) {
-      site = toflip[sorted_ind[nflip - 1]];
-      if (site == N_ - 1) {
-        new_prod = prod(
-            new_prod,
-            W_[site % symperiod_][confindex_[newconf[sorted_ind[nflip - 1]]]]);
-      } else {
-        new_prod =
-            prod(new_prod, W_[(N_ - 1) % symperiod_][confindex_[v(N_ - 1)]]);
-      }
-    }
-    return std::log(trace(new_prod) / trace(lt.M(start_of_level_.back())));
+
+    return std::log(trace(updated_leaves.back()) / trace(lt.M(Nleaves_ - 1)));
   }
 
   /**
