@@ -562,6 +562,11 @@ class MPSPeriodic : public AbstractMachine<T> {
     std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
     MatrixType new_prod = identity_mat_;
 
+    // for (std::size_t k = 0; k < nflip; k++) {
+    //  std::cout << toflip[sorted_ind[k]] << " ";
+    //}
+    // std::cout << std::endl;
+
     std::vector<bool> tree_changes = tree_changes_init_;
     std::vector<int> empty_int_vector, tree_top;  // Keep indices of tree tops
     std::vector<MatrixType> empty_mat_vector;
@@ -574,7 +579,10 @@ class MPSPeriodic : public AbstractMachine<T> {
       nflip--;
     }
 
-    // InfoMessage() << "LogValDiff check 1, toflip = " << site << std::endl;
+    for (std::size_t k = 0; k < nflip; k++) {
+      std::cout << toflip[sorted_ind[k]] << " ";
+    }
+    std::cout << std::endl;
 
     // Update level 0 (iterate in MPS)
     // MPS is "level -1"
@@ -615,6 +623,10 @@ class MPSPeriodic : public AbstractMachine<T> {
       // Update level+1 (iterate in level)
       //  InfoMessage() << "nflip = " << nflip << std::endl;
       //  InfoMessage() << "Updates level = " << level + 1 << std::endl;
+      for (std::size_t k = 0; k < nflip; k++) {
+        std::cout << changed_ind[level][k] << " ";
+      }
+      std::cout << std::endl;
 
       changed_ind.push_back(empty_int_vector);
       changed_mat.push_back(empty_mat_vector);
@@ -654,6 +666,7 @@ class MPSPeriodic : public AbstractMachine<T> {
     for (int t = 0; t < Ntrees_; t++) {
       if (tree_changes[t]) {
         new_prod = prod(new_prod, changed_mat[tree_top[tree]].back());
+        InfoMessage() << "Updated matrix used: " << t << std::endl;
         tree++;
       } else {
         new_prod = prod(new_prod, lt.M(tree_top_[t]));
