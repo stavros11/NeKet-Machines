@@ -658,13 +658,18 @@ class MPSPeriodic : public AbstractMachine<T> {
       for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
         std::size_t m = 0;
         while (updated_leaves_index[m] < leaves_of_site_[site][l]) {
+          InfoMessage() << "LogValDiff subcheck 1! " << m << std::endl;
+          InfoMessage() << updated_leaves_index[m] << std::endl;
           m++;
         }
+
         if (updated_leaves_index[m] != leaves_of_site_[site][l]) {
           updated_leaves_index.insert(updated_leaves_index.begin() + m,
                                       leaves_of_site_[site][l] - N_);
           updated_leaves.insert(updated_leaves.begin() + m, empty_matrix);
           ltpM[leaves_of_site_[site][l]] = &(updated_leaves[m]);
+
+          InfoMessage() << "LogValDiff subcheck 2!" << std::endl;
 
           // Add matrices needed for contraction in the map
           for (int i = 0; i < 2; i++) {
@@ -673,11 +678,18 @@ class MPSPeriodic : public AbstractMachine<T> {
               if (leaf_nr < N_) {
                 two_vector[i] =
                     &(W_[leaf_nr % symperiod_][confindex_[v(leaf_nr)]]);
+
+                InfoMessage() << "LogValDiff subcheck 3a!" << std::endl;
+
               } else {
                 two_vector[i] = &(lt.M(leaf_nr - N_));
+
+                InfoMessage() << "LogValDiff subcheck 3b!" << std::endl;
               }
             } else {
               two_vector[i] = ltpM[leaf_nr];
+
+              InfoMessage() << "LogValDiff subcheck 3c!" << std::endl;
             }
           }
           updated_leaves_contractions.insert(
