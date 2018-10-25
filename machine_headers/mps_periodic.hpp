@@ -308,24 +308,29 @@ class MPSPeriodic : public AbstractMachine<T> {
     InfoMessage() << "InitLookup called!" << std::endl;
 
     for (int k = 0; k < Nleaves_; k++) {
-      std::vector<MatrixType *> m(2);
-      for (int i = 0; i < 2; i++) {
-        if (leaf_contractions_[k][i] < N_) {
-          m[i] = &(W_[leaf_contractions_[k][i] % symperiod_]
-                     [confindex_[v(leaf_contractions_[k][i])]]);
+      _InitLookup_check(lt, k);
+      if (leaf_contractions_[k][0] < N_) {
+        if (leaf_contractions_[k][1] < N_) {
+          lt.M(k) = prod(W_[leaf_contractions_[k][0] % symperiod_]
+                           [confindex_[v(leaf_contractions_[k][0])]],
+                         W_[leaf_contractions_[k][1] % symperiod_]
+                           [confindex_[v(leaf_contractions_[k][1])]]);
         } else {
-          m[i] = &(lt.M(leaf_contractions_[k][i] - N_));
+          lt.M(k) = prod(W_[leaf_contractions_[k][0] % symperiod_]
+                           [confindex_[v(leaf_contractions_[k][0])]],
+                         lt.M(leaf_contractions_[k][1] - N_));
+        }
+
+      } else {
+        if (leaf_contractions_[k][1] < N_) {
+          lt.M(k) = prod(lt.M(leaf_contractions_[k][0] - N_),
+                         W_[leaf_contractions_[k][1] % symperiod_]
+                           [confindex_[v(leaf_contractions_[k][1])]]);
+        } else {
+          lt.M(k) = prod(lt.M(leaf_contractions_[k][0] - N_),
+                         lt.M(leaf_contractions_[k][1] - N_));
         }
       }
-
-      InfoMessage() << "InitLookup check " << std::endl;
-      InfoMessage() << (*(m[0])).size() << std::endl;
-      InfoMessage() << (*(m[1])).size() << std::endl;
-
-      _InitLookup_check(lt, k);
-      lt.M(k) = prod(*(m[0]), *(m[1]));
-
-      InfoMessage() << "InitLookup check " << k << " again" << std::endl;
     }
 
     InfoMessage() << "InitLookup ended!" << std::endl;
