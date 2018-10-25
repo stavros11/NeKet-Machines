@@ -131,6 +131,24 @@ class MPSPeriodic : public AbstractMachine<T> {
     // Initialize tree parameters
     InitTree();
 
+    InfoMessage() << "Number of leaves " << Nleaves_ << std::endl;
+    InfoMessage() << "Leaves of site: " << std::endl;
+    for (int i = 0; i < N_; i++) {
+      for (std::size_t k = 0; k < leaves_of_site_[i].size(); k++) {
+        std::cout << leaves_of_site_[i][k] << " ";
+      }
+      std::cout << std::endl;
+    }
+    std::cout << std::endl;
+
+    InfoMessage() << "Leaf contractions: " << std::endl;
+    for (int l = 0; l < Nleaves_; l++) {
+      for (int i = 0; i < 2; i++) {
+        std::cout << leaf_contractions_[l][i] << " ";
+      }
+      std::cout << std::endl;
+    }
+
     // Machine creation messages
     if (diag) {
       InfoMessage() << "Periodic diagonal MPS machine with " << N_
@@ -161,57 +179,73 @@ class MPSPeriodic : public AbstractMachine<T> {
     // Initializes vectors used for tree look up tables
     // leaves_of_site_ and leaf_contractions_
 
-    std::vector<int> above, two_vector(2), level_start;
+    std::vector<int> two_vector(2), empty_vector, level_start;
+    std::vector<std::vector<int>> above;
+    int level = 1, available_ind = 0, available_level = 0, Nlevels = 0;
     bool available = false;
-    int length = N_, level = 1, available_ind;
 
     level_start.push_back(0);
     level_start.push_back(N_);
 
+    int length = level_start[level] - level_start[level - 1];
     while (length > 1 or available) {
+      above.push_back(empty_vector);
+      // Iterate level-1
       for (int i = 0; i < length - 1; i += 2) {
-        above.push_back(level_start[level] + i);
-        above.push_back(level_start[level] + i);
-
+        // Construct above for level-1
+        above.back().push_back(level_start[level] + i / 2);
+        above.back().push_back(level_start[level] + i / 2);
+        // Construct leaf_contractions_ for level
         two_vector[0] = level_start[level - 1] + i;
         two_vector[1] = level_start[level - 1] + i + 1;
         leaf_contractions_.push_back(two_vector);
       }
       if (length % 2 == 1) {
         if (available) {
-          above.push_back(level_start[level] + length - 1);
-          above.insert(above.begin() + available_ind,
-                       level_start[level] + length - 1);
+          // Connect the two odd leaves
+          above.back().push_back(level_start[level] + (length - 1) / 2);
+          above[available_level].push_back(level_start[level] +
+                                           (length - 1) / 2);
 
-          two_vector[0] = level_start[level - 1] + length - 1;
-          two_vector[1] = level_start[level - 1] + length;
+          two_vector[0] = level_start[level] - 1;
+          two_vector[1] = available_ind;
           leaf_contractions_.push_back(two_vector);
 
+          level_start.push_back(level_start.back() + length / 2 + 1);
           available = false;
         } else {
           available = true;
-          available_ind = length - 1;
+          available_ind = level_start[level] - 1;
+          available_level = level - 1;
+          level_start.push_back(level_start.back() + length / 2);
         }
+      } else {
+        level_start.push_back(level_start.back() + length / 2);
       }
-      // the length of the level we just created
-      length = length / 2;
-      // the start of the next level
-      level_start.push_back(level_start.back() + length);
       level++;
+      length = level_start[level] - level_start[level - 1];
     }
     Nleaves_ = level_start.back();
 
-    // Transform above vector to leaves_of_site_ vector
+    // Flatten above vector
+    std::vector<int> flat_above;
+    for (std::size_t l = 0; l < above.size(); l++) {
+      for (std::size_t k = 0; k < above[l].size(); k++) {
+        flat_above.push_back(above[l][k]);
+      }
+    }
+
+    // Create leaves_of_site_ from above vector
     for (int i = 0; i < N_; i++) {
       std::vector<int> leaves;
-      leaves.push_back(i);
-      while (leaves.back() < Nleaves_) {
-        leaves.push_back(above[leaves.back()]);
+      leaves.push_back(flat_above[i]);
+      while (flat_above[leaves.back()] < Nleaves_ - 1) {
+        leaves.push_back(flat_above[leaves.back()]);
       }
+      leaves.push_back(Nleaves_ - 1);
       leaves_of_site_.push_back(leaves);
       leaves.clear();
     }
-
     Nleaves_ += -N_;
   }
 
@@ -271,6 +305,8 @@ class MPSPeriodic : public AbstractMachine<T> {
   int Nvisible() const override { return N_; }
 
   void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
+    InfoMessage() << "InitLookup called!" << std::endl;
+
     for (int k = 0; k < Nleaves_; k++) {
       std::vector<MatrixType *> m(2);
       for (int i = 0; i < 2; i++) {
@@ -282,9 +318,17 @@ class MPSPeriodic : public AbstractMachine<T> {
         }
       }
 
+      InfoMessage() << "InitLookup check " << std::endl;
+      InfoMessage() << (*(m[0])).size() << std::endl;
+      InfoMessage() << (*(m[1])).size() << std::endl;
+
       _InitLookup_check(lt, k);
       lt.M(k) = prod(*(m[0]), *(m[1]));
+
+      InfoMessage() << "InitLookup check " << k << " again" << std::endl;
     }
+
+    InfoMessage() << "InitLookup ended!" << std::endl;
   }
 
   /**
@@ -343,6 +387,8 @@ class MPSPeriodic : public AbstractMachine<T> {
       return;
     }
 
+    InfoMessage() << "UpdatedLookup called!" << std::endl;
+
     std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
     std::vector<int> updated_leaves_index;
     std::map<int, MatrixType *> ltpM;
@@ -372,6 +418,8 @@ class MPSPeriodic : public AbstractMachine<T> {
         }
       }
     }
+
+    InfoMessage() << "UpdateLookup check 1!" << std::endl;
 
     // Add leaves for the rest sites that flip
     for (std::size_t k = 1; k < nchange; k++) {
@@ -403,12 +451,16 @@ class MPSPeriodic : public AbstractMachine<T> {
       }
     }
 
+    InfoMessage() << "UpdateLookup check 2!" << std::endl;
+
     // Do updates
     for (std::size_t k = 0; k < updated_leaves_index.size(); k++) {
       lt.M(updated_leaves_index[k]) =
           prod(*ltpM[leaf_contractions_[updated_leaves_index[k]][0]],
                *ltpM[leaf_contractions_[updated_leaves_index[k]][1]]);
     }
+
+    InfoMessage() << "UpdateLookup ended!" << std::endl;
   }
 
   /**
@@ -549,6 +601,9 @@ class MPSPeriodic : public AbstractMachine<T> {
     if (nflip <= 0) {
       return T(0, 0);
     }
+
+    InfoMessage() << "LogValDiff called!" << std::endl;
+
     MatrixType empty_matrix(D_, Dsec_);
     std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
     std::vector<MatrixType> updated_leaves;
@@ -564,6 +619,8 @@ class MPSPeriodic : public AbstractMachine<T> {
       site = toflip[sorted_ind[k]];
       ltpM[site] = &(W_[site][confindex_[newconf[sorted_ind[k]]]]);
     }
+
+    InfoMessage() << "LogValDiff check 1!" << std::endl;
 
     // Add leaves for the first site
     site = toflip[sorted_ind[0]];
@@ -587,6 +644,8 @@ class MPSPeriodic : public AbstractMachine<T> {
       }
       updated_leaves_contractions.push_back(two_vector);
     }
+
+    InfoMessage() << "LogValDiff check 2!" << std::endl;
 
     // Add leaves for the rest sites that flip
     for (std::size_t k = 1; k < nflip; k++) {
@@ -622,11 +681,15 @@ class MPSPeriodic : public AbstractMachine<T> {
       }
     }
 
+    InfoMessage() << "LogValDiff check 3!" << std::endl;
+
     // Update products
     for (std::size_t k = 0; k < updated_leaves.size(); k++) {
       updated_leaves[k] = prod(*(updated_leaves_contractions[k][0]),
                                *(updated_leaves_contractions[k][1]));
     }
+
+    InfoMessage() << "LogValDiff ended!" << std::endl;
 
     return std::log(trace(updated_leaves.back()) / trace(lt.M(Nleaves_ - 1)));
   }
