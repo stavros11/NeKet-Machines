@@ -375,15 +375,12 @@ class MPSPeriodic : public AbstractMachine<T> {
 
     std::set<int> leaves2update;
     std::size_t set_len = 0;
-
-    std::vector<bool> two_vector(2, false);
-    std::map<int, std::vector<bool>> contractions_change;
-    std::map<int, MatrixType *> changed_mat;
+    std::map<int, MatrixType *> base_mat;
 
     for (std::size_t k = 0; k < nchange; k++) {
       int site = tochange[sorted_ind[k]];
       // Add changed visible matrices to map
-      changed_mat[site] =
+      base_mat[site] =
           &(W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
       // Add the rest of matrices that affects
       for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
@@ -391,38 +388,22 @@ class MPSPeriodic : public AbstractMachine<T> {
         leaves2update.insert(leaf);
         if (leaves2update.size() > set_len) {
           set_len++;
-          // Check the contractions of the new matrix (if they change)
           for (int i = 0; i < 2; i++) {
-            if (leaf_contractions_[leaf - N_][i] < N_) {
-              if (std::find(tochange.begin(), tochange.end(),
-                            leaf_contractions_[leaf - N_][i]) !=
-                  tochange.end()) {
-                two_vector[i] = true;
+            int lc = leaf_contractions_[leaf - N_][i];
+            if (lc < N_) {
+              if (base_mat.count(lc) == 0) {
+                base_mat[lc] = &(W_[lc % symperiod_][confindex_[v(lc)]]);
               }
+            } else {
+              base_mat[lc] = &(lt.M(lc - N_));
             }
           }
-          contractions_change[leaf] = two_vector;
-          two_vector[0] = false;
-          two_vector[1] = false;
         }
       }
     }
-
     for (auto leaf : leaves2update) {
-      std::vector<MatrixType *> m(2);
-      for (int i = 0; i < 2; i++) {
-        if (leaf_contractions_[leaf - N_][i] < N_) {
-          if (contractions_change[leaf][i]) {
-            m[i] = changed_mat[leaf_contractions_[leaf - N_][i]];
-          } else {
-            m[i] = &(W_[leaf_contractions_[leaf - N_][i] % symperiod_]
-                       [confindex_[v(leaf_contractions_[leaf - N_][i])]]);
-          }
-        } else {
-          m[i] = &(lt.M(leaf_contractions_[leaf - N_][i] - N_));
-        }
-      }
-      lt.M(leaf - N_) = prod(*(m[0]), *(m[1]));
+      lt.M(leaf - N_) = prod(*(base_mat[leaf_contractions_[leaf - N_][0]]),
+                             *(base_mat[leaf_contractions_[leaf - N_][1]]));
     }
   }
 
@@ -610,14 +591,14 @@ class MPSPeriodic : public AbstractMachine<T> {
     for (auto leaf : leaves2update) {
       std::vector<MatrixType> m(2);
       for (int i = 0; i < 2; i++) {
+        int lc = leaf_contractions_[leaf - N_][i];
         if (contractions_change[leaf][i]) {
-          m[i] = ltpM[leaf_contractions_[leaf - N_][i]];
+          m[i] = ltpM[lc];
         } else {
-          if (leaf_contractions_[leaf - N_][i] < N_) {
-            m[i] = W_[leaf_contractions_[leaf - N_][i] % symperiod_]
-                     [confindex_[v(leaf_contractions_[leaf - N_][i])]];
+          if (lc < N_) {
+            m[i] = W_[lc % symperiod_][confindex_[v(lc)]];
           } else {
-            m[i] = lt.M(leaf_contractions_[leaf - N_][i] - N_);
+            m[i] = lt.M(lc - N_);
           }
         }
       }
