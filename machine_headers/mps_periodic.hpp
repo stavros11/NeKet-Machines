@@ -131,24 +131,6 @@ class MPSPeriodic : public AbstractMachine<T> {
     // Initialize tree parameters
     InitTree();
 
-    InfoMessage() << "Number of leaves " << Nleaves_ << std::endl;
-    InfoMessage() << "Leaves of site: " << std::endl;
-    for (int i = 0; i < N_; i++) {
-      for (std::size_t k = 0; k < leaves_of_site_[i].size(); k++) {
-        std::cout << leaves_of_site_[i][k] << " ";
-      }
-      std::cout << std::endl;
-    }
-    std::cout << std::endl;
-
-    InfoMessage() << "Leaf contractions: " << std::endl;
-    for (int l = 0; l < Nleaves_; l++) {
-      for (int i = 0; i < 2; i++) {
-        std::cout << leaf_contractions_[l][i] << " ";
-      }
-      std::cout << std::endl;
-    }
-
     // Machine creation messages
     if (diag) {
       InfoMessage() << "Periodic diagonal MPS machine with " << N_
