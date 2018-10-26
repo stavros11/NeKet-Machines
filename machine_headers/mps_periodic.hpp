@@ -181,7 +181,7 @@ class MPSPeriodic : public AbstractMachine<T> {
 
     std::vector<int> two_vector(2), empty_vector, level_start;
     std::vector<std::vector<int>> above;
-    int level = 1, available_ind = 0, available_level = 0, Nlevels = 0;
+    int level = 1, available_ind = 0, available_level = 0;
     bool available = false;
 
     level_start.push_back(0);
@@ -305,8 +305,6 @@ class MPSPeriodic : public AbstractMachine<T> {
   int Nvisible() const override { return N_; }
 
   void InitLookup(const Eigen::VectorXd &v, LookupType &lt) override {
-    InfoMessage() << "InitLookup called!" << std::endl;
-
     for (int k = 0; k < Nleaves_; k++) {
       _InitLookup_check(lt, k);
       if (leaf_contractions_[k][0] < N_) {
@@ -332,8 +330,6 @@ class MPSPeriodic : public AbstractMachine<T> {
         }
       }
     }
-
-    InfoMessage() << "InitLookup ended!" << std::endl;
   }
 
   /**
@@ -392,80 +388,60 @@ class MPSPeriodic : public AbstractMachine<T> {
       return;
     }
 
-    InfoMessage() << "UpdatedLookup called!" << std::endl;
-
+    MatrixType empty_matrix = MatrixType::Zero(D_, Dsec_);
     std::vector<std::size_t> sorted_ind = sort_indeces(tochange);
-    std::vector<int> updated_leaves_index;
-    std::map<int, MatrixType *> ltpM;
-    int site;
 
-    // Add tochanges in the map
+    std::set<int> leaves2update;
+    std::size_t set_len = 0;
+
+    std::vector<bool> two_vector(2, false);
+    std::map<int, std::vector<bool>> contractions_change;
+    std::map<int, MatrixType *> changed_mat;
+
     for (std::size_t k = 0; k < nchange; k++) {
-      site = tochange[sorted_ind[k]];
-      ltpM[site] = &(W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
-    }
-
-    // Add leaves for the first site
-    site = tochange[sorted_ind[0]];
-    for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
-      updated_leaves_index.push_back(leaves_of_site_[site][l] - N_);
-      ltpM[leaves_of_site_[site][l]] = &(lt.M(leaves_of_site_[site][l] - N_));
-      // Add matrices needed for contraction in the map
-      // if they do not already exist
-      for (int i = 0; i < 2; i++) {
-        int leaf_nr = leaf_contractions_[leaves_of_site_[site][l] - N_][i];
-        if (ltpM.count(leaf_nr) == 0) {
-          if (leaf_nr < N_) {
-            ltpM[leaf_nr] = &(W_[leaf_nr % symperiod_][confindex_[v(leaf_nr)]]);
-          } else {
-            ltpM[leaf_nr] = &(lt.M(leaf_nr - N_));
-          }
-        }
-      }
-    }
-
-    InfoMessage() << "UpdateLookup check 1!" << std::endl;
-
-    // Add leaves for the rest sites that flip
-    for (std::size_t k = 1; k < nchange; k++) {
-      site = tochange[sorted_ind[k]];
+      int site = tochange[sorted_ind[k]];
+      // Add changed visible matrices to map
+      changed_mat[site] =
+          &(W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]]);
+      // Add the rest of matrices that affects
       for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
-        std::size_t m = 0;
-        while (updated_leaves_index[m] < leaves_of_site_[site][l]) {
-          m++;
-        }
-        if (updated_leaves_index[m] != leaves_of_site_[site][l]) {
-          updated_leaves_index.insert(updated_leaves_index.begin() + m,
-                                      leaves_of_site_[site][l] - N_);
-          ltpM[leaves_of_site_[site][l]] =
-              &(lt.M(leaves_of_site_[site][l] - N_));
-
-          // Add matrices needed for contraction in the map
+        int leaf = leaves_of_site_[site][l];
+        leaves2update.insert(leaf);
+        if (leaves2update.size() > set_len) {
+          set_len++;
+          // Check the contractions of the new matrix (if they change)
           for (int i = 0; i < 2; i++) {
-            int leaf_nr = leaf_contractions_[leaves_of_site_[site][l] - N_][i];
-            if (ltpM.count(leaf_nr) == 0) {
-              if (leaf_nr < N_) {
-                ltpM[leaf_nr] =
-                    &(W_[leaf_nr & symperiod_][confindex_[v(leaf_nr)]]);
-              } else {
-                ltpM[leaf_nr] = &(lt.M(leaf_nr - N_));
+            if (leaf_contractions_[leaf - N_][i] < N_) {
+              if (std::find(tochange.begin(), tochange.end(),
+                            leaf_contractions_[leaf - N_][i]) !=
+                  tochange.end()) {
+                two_vector[i] = true;
               }
             }
           }
+          contractions_change[leaf] = two_vector;
+          two_vector[0] = false;
+          two_vector[1] = false;
         }
       }
     }
 
-    InfoMessage() << "UpdateLookup check 2!" << std::endl;
-
-    // Do updates
-    for (std::size_t k = 0; k < updated_leaves_index.size(); k++) {
-      lt.M(updated_leaves_index[k]) =
-          prod(*ltpM[leaf_contractions_[updated_leaves_index[k]][0]],
-               *ltpM[leaf_contractions_[updated_leaves_index[k]][1]]);
+    for (auto leaf : leaves2update) {
+      std::vector<MatrixType *> m(2);
+      for (int i = 0; i < 2; i++) {
+        if (leaf_contractions_[leaf - N_][i] < N_) {
+          if (contractions_change[leaf][i]) {
+            m[i] = changed_mat[leaf_contractions_[leaf - N_][i]];
+          } else {
+            m[i] = &(W_[leaf_contractions_[leaf - N_][i] % symperiod_]
+                       [confindex_[v(leaf_contractions_[leaf - N_][i])]]);
+          }
+        } else {
+          m[i] = &(lt.M(leaf_contractions_[leaf - N_][i] - N_));
+        }
+      }
+      lt.M(leaf - N_) = prod(*(m[0]), *(m[1]));
     }
-
-    InfoMessage() << "UpdateLookup ended!" << std::endl;
   }
 
   /**
@@ -607,116 +583,76 @@ class MPSPeriodic : public AbstractMachine<T> {
       return T(0, 0);
     }
 
-    InfoMessage() << "LogValDiff called!" << std::endl;
+    // InfoMessage() << "LogValDiff called!" << std::endl;
 
-    MatrixType empty_matrix(D_, Dsec_);
+    MatrixType empty_matrix = MatrixType::Zero(D_, Dsec_);
     std::vector<std::size_t> sorted_ind = sort_indeces(toflip);
-    std::vector<MatrixType> updated_leaves;
-    std::vector<int> updated_leaves_index;
-    std::vector<const MatrixType *> two_vector(2);
-    std::vector<std::vector<const MatrixType *>> updated_leaves_contractions;
-    // Map from leaf number to the corresponding matrix (changed or not)
-    std::map<int, MatrixType *> ltpM;
-    int site;
 
-    // Add toflips in the map
+    std::set<int> leaves2update;
+    std::map<int, MatrixType> ltpM;
+    std::size_t set_len = 0;
+
+    std::vector<bool> two_vector(2, false);
+    std::map<int, std::vector<bool>> contractions_change;
+
     for (std::size_t k = 0; k < nflip; k++) {
-      site = toflip[sorted_ind[k]];
-      ltpM[site] = &(W_[site][confindex_[newconf[sorted_ind[k]]]]);
+      int site = toflip[sorted_ind[k]];
+      // Add changed visible matrices to map
+      ltpM[site] = W_[site % symperiod_][confindex_[newconf[sorted_ind[k]]]];
+
+      // Add the rest of matrices that affects
+      for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
+        int leaf = leaves_of_site_[site][l];
+        leaves2update.insert(leaf);
+        if (leaves2update.size() > set_len) {
+          set_len++;
+          ltpM[leaf] = empty_matrix;
+        }
+        // Check the contractions of the new matrix (if they change)
+        for (int i = 0; i < 2; i++) {
+          if (std::find(toflip.begin(), toflip.end(),
+                        leaf_contractions_[leaf - N_][i]) != toflip.end()) {
+            two_vector[i] = true;
+          } else if (leaves2update.find(leaf_contractions_[leaf - N_][i]) !=
+                     leaves2update.end()) {
+            two_vector[i] = true;
+          }
+        }
+        contractions_change[leaf] = two_vector;
+        two_vector[0] = false;
+        two_vector[1] = false;
+      }
     }
 
-    InfoMessage() << "LogValDiff check 1!" << std::endl;
+    // Calculate products
+    for (auto leaf : leaves2update) {
+      std::vector<MatrixType> m(2);
 
-    // Add leaves for the first site
-    site = toflip[sorted_ind[0]];
-    for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
-      updated_leaves.push_back(empty_matrix);
-      updated_leaves_index.push_back(leaves_of_site_[site][l] - N_);
-      ltpM[leaves_of_site_[site][l]] = &(updated_leaves.back());
-      // Add matrices needed for contraction in the map
-      // if they do not already exist
+      std::cout << "Leaves: " << std::endl;
+      std::cout << leaf << std::endl;
+
       for (int i = 0; i < 2; i++) {
-        int leaf_nr = leaf_contractions_[leaves_of_site_[site][l] - N_][i];
-        if (ltpM.count(leaf_nr) == 0) {
-          if (leaf_nr < N_) {
-            two_vector[i] = &(W_[leaf_nr % symperiod_][confindex_[v(leaf_nr)]]);
-          } else {
-            two_vector[i] = &(lt.M(leaf_nr - N_));
-          }
+        if (contractions_change[leaf][i]) {
+          m[i] = ltpM[leaf_contractions_[leaf - N_][i]];
         } else {
-          two_vector[i] = ltpM[leaf_nr];
-        }
-      }
-      updated_leaves_contractions.push_back(two_vector);
-    }
-
-    InfoMessage() << "LogValDiff check 2!" << std::endl;
-
-    for (std::size_t m = 0; m < updated_leaves_index.size(); m++) {
-      std::cout << updated_leaves_index[m] << " ";
-    }
-    std::cout << std::endl;
-
-    // Add leaves for the rest sites that flip
-    for (std::size_t k = 1; k < nflip; k++) {
-      site = toflip[sorted_ind[k]];
-      for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
-        std::cout << leaves_of_site_[site][l] << " ";
-      }
-      std::cout << std::endl;
-
-      for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
-        std::size_t m = 0;
-        while (updated_leaves_index[m] < leaves_of_site_[site][l] - N_) {
-          m++;
-        }
-
-        if (updated_leaves_index[m] != leaves_of_site_[site][l]) {
-          updated_leaves_index.insert(updated_leaves_index.begin() + m,
-                                      leaves_of_site_[site][l] - N_);
-          updated_leaves.insert(updated_leaves.begin() + m, empty_matrix);
-          ltpM[leaves_of_site_[site][l]] = &(updated_leaves[m]);
-
-          InfoMessage() << "LogValDiff subcheck 2!" << std::endl;
-
-          // Add matrices needed for contraction in the map
-          for (int i = 0; i < 2; i++) {
-            int leaf_nr = leaf_contractions_[leaves_of_site_[site][l] - N_][i];
-            if (ltpM.count(leaf_nr) == 0) {
-              if (leaf_nr < N_) {
-                two_vector[i] =
-                    &(W_[leaf_nr % symperiod_][confindex_[v(leaf_nr)]]);
-
-                InfoMessage() << "LogValDiff subcheck 3a!" << std::endl;
-
-              } else {
-                two_vector[i] = &(lt.M(leaf_nr - N_));
-
-                InfoMessage() << "LogValDiff subcheck 3b!" << std::endl;
-              }
-            } else {
-              two_vector[i] = ltpM[leaf_nr];
-
-              InfoMessage() << "LogValDiff subcheck 3c!" << std::endl;
-            }
+          if (leaf_contractions_[leaf - N_][i] < N_) {
+            m[i] = W_[leaf_contractions_[leaf - N_][i] % symperiod_]
+                     [confindex_[v(leaf_contractions_[leaf - N_][i])]];
+          } else {
+            m[i] = lt.M(leaf_contractions_[leaf - N_][i] - N_);
           }
-          updated_leaves_contractions.insert(
-              updated_leaves_contractions.begin() + m, two_vector);
         }
       }
+      ltpM[leaf] = prod(m[0], m[1]);
+
+      std::cout << "Change:" << contractions_change[leaf][0] << " "
+                << contractions_change[leaf][1] << std::endl;
     }
 
-    InfoMessage() << "LogValDiff check 3!" << std::endl;
-
-    // Update products
-    for (std::size_t k = 0; k < updated_leaves.size(); k++) {
-      updated_leaves[k] = prod(*(updated_leaves_contractions[k][0]),
-                               *(updated_leaves_contractions[k][1]));
-    }
-
-    InfoMessage() << "LogValDiff ended!" << std::endl;
-
-    return std::log(trace(updated_leaves.back()) / trace(lt.M(Nleaves_ - 1)));
+    //  InfoMessage() << "LogValDiff ended!" << std::endl;
+    std::cout << "End: " << std::endl;
+    std::cout << Nleaves_ + N_ - 1 << std::endl;
+    return std::log(trace(ltpM[Nleaves_ + N_ - 1]) / trace(lt.M(Nleaves_ - 1)));
   }
 
   /**
