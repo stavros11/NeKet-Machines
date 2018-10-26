@@ -652,14 +652,22 @@ class MPSPeriodic : public AbstractMachine<T> {
 
     InfoMessage() << "LogValDiff check 2!" << std::endl;
 
+    for (std::size_t m = 0; m < updated_leaves_index.size(); m++) {
+      std::cout << updated_leaves_index[m] << " ";
+    }
+    std::cout << std::endl;
+
     // Add leaves for the rest sites that flip
     for (std::size_t k = 1; k < nflip; k++) {
       site = toflip[sorted_ind[k]];
       for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
+        std::cout << leaves_of_site_[site][l] << " ";
+      }
+      std::cout << std::endl;
+
+      for (std::size_t l = 0; l < leaves_of_site_[site].size(); l++) {
         std::size_t m = 0;
-        while (updated_leaves_index[m] < leaves_of_site_[site][l]) {
-          InfoMessage() << "LogValDiff subcheck 1! " << m << std::endl;
-          InfoMessage() << updated_leaves_index[m] << std::endl;
+        while (updated_leaves_index[m] < leaves_of_site_[site][l] - N_) {
           m++;
         }
 
