@@ -627,10 +627,6 @@ class MPSPeriodic : public AbstractMachine<T> {
     // Calculate products
     for (auto leaf : leaves2update) {
       std::vector<MatrixType> m(2);
-
-      std::cout << "Leaves: " << std::endl;
-      std::cout << leaf << std::endl;
-
       for (int i = 0; i < 2; i++) {
         if (contractions_change[leaf][i]) {
           m[i] = ltpM[leaf_contractions_[leaf - N_][i]];
@@ -644,14 +640,8 @@ class MPSPeriodic : public AbstractMachine<T> {
         }
       }
       ltpM[leaf] = prod(m[0], m[1]);
-
-      std::cout << "Change:" << contractions_change[leaf][0] << " "
-                << contractions_change[leaf][1] << std::endl;
     }
-
     //  InfoMessage() << "LogValDiff ended!" << std::endl;
-    std::cout << "End: " << std::endl;
-    std::cout << Nleaves_ + N_ - 1 << std::endl;
     return std::log(trace(ltpM[Nleaves_ + N_ - 1]) / trace(lt.M(Nleaves_ - 1)));
   }
 
