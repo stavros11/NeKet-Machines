@@ -35,4 +35,3 @@ pars['Machine']={
 ---------------
 1. [Cirac J. I. & Verstraete F., Journal of Physics A: Mathematical and Theoretical (2009), Renormalization and tensor product states in spin chains and lattices](http://iopscience.iop.org/article/10.1088/1751-8113/42/50/504004)
 2. [Sandvik A. W. & Vidal G., Phys. Rev. Lett. 99, 220602 (2007), Variational Quantum Monte Carlo Simulations with Tensor-Network States](https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.99.220602)
-3. [Glasser I. et al, Phys. Rev. X 8, 011006 (2018), Neural-Network Quantum States, String-Bond States, and Chiral Topological States](https://journals.aps.org/prx/abstract/10.1103/PhysRevX.8.011006)
