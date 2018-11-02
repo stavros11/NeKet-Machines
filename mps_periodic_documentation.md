@@ -27,7 +27,7 @@ for arbitrary local quantum numbers $$ s_i $$. $$ A^{(s_i)}_{i} $$ are complex $
 ```python
 pars['Machine']={
     'Name'           : 'MPSperiodic',
-    `BondDim`        : 10,
+    'BondDim'        : 10,
 }
 ```
 
