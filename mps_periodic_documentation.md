@@ -10,11 +10,7 @@ $$
 \Psi(s_1, \dots , s_N) = \mathrm{Tr}\left [ A^{(s_1)}_1A^{(s_2)}_2\dots A^{(s_N)}_N \right ]
 $$
 
-for arbitrary local quantum numbers $$ s_i $$. $$ A^{(s_i)} $$ are complex $$ D\times D $$ matrices 
-
-The total number of variational parameters of this long-range Jastrow operator is $$ \mathcal{O} (N (N-1)/2) $$, and all parameters are taken complex-valued. This wavefunction needs less input parameters compared to the RBM wavefunction, since the hidden layer is not present. In the language of neural networks a Jastrow machine can be seen as a fully visible RBM, with all the intra-layer connections active.
-
-
+for arbitrary local quantum numbers $$ s_i $$. $$ A^{(s_i)}_{i} $$ are complex $$ D\times D $$ matrices which contain the $$ N D^2 $$ complex variational parameters. $$ D $$ is known as the bond dimension. $$ D $$ is the same for all the matrices. It is possible to use diagonal matrices, reducing the number of parameters to $$ N D $$, or to enforce translational symmetry. In this case we use $$ n < N $$, where $$ n $$ is a divisor of $$ N $$ distinct matrices, which are repeated to cover all the sites.
 
 |---
 | Parameter | Possible values | Description | Default value |
@@ -22,46 +18,21 @@ The total number of variational parameters of this long-range Jastrow operator i
 | `InitFile` | String |  If specified, matrix parameters are loaded from the given file | None |
 | `InitRandom` | Boolean |  Whether to initialize the parameters with random gaussian-distributed values | True |
 | `SigmaRand` | Float |  If InitRandom is chosen, this is the standard deviation of the gaussian  | 0.1 |
+| `BondDim` | Integer |  Bond dimension | None |
+| `Diagonal` | Boolean |  Use diagonal matrices only | False |
+| `SymmetryPeriod` | Integer |  The number $$ n $$ of distinct matrices to repeat (assuming translational symmetry) | $$ N $$ |
 |===
 
 ### Example
 ```python
 pars['Machine']={
-    'Name'           : 'Jastrow',
+    'Name'           : 'MPSperiodic',
+    `BondDim`        : 10,
 }
 ```
-
-<h2 class="bg-primary">JastrowSymm</h2>
-This type of Jastrow wavefunction is constructed to be invariant under specific permutations of the
-graph indices. In particular, $$ \Psi(s_1,\dots s_N) = \Psi(s_{P_k(1)} \dots s_{P_k(N)}) $$, where $$ P_k(i) $$ is the $$ k $$ -th permutation of the index $$ i $$,
-and assuming a total of $$ N_p $$ distinct permutations.  
-
-Let us consider the case of a N=20 spin chain, under periodic boundary conditions. The total number of parameters is $$N (N-1)1/2 =190$$, corresponding to the full upper triangle (excluding the diagonal, always set to $$0$$) to the $$W$$ matrix. However it is true that, if permutation symmetry holds, the parameter $$W[1,2]$$  controlling the interaction between quantum operator $$ s_1 $$ and $$ s_2 $$ must be equal to $$W[2,3]$$, and so on.
-Therefore, in this case, the effective number of independent parameter is no longer $$190$$ but $$10$$.
-In the general case, this number is automatically computed inside the class by checking the symmetry table associated with the graph.
-
-
-
-
-|---
-| Parameter | Possible values | Description | Default value |
-|-|-|-|-
-| `InitFile` | String |  If specified, matrix parameters are loaded from the given file | None |
-| `InitRandom` | Boolean |  Whether to initialize the parameters with random gaussian-distributed values | True |
-| `SigmaRand` | Float |  If InitRandom is chosen, this is the standard deviation of the gaussian  | 0.1 |
-|===
-
-### Example
-```python
-pars['Machine']={
-    'Name'           : 'JastrowSymm',
-}
-```
-
-
-
 
 ## References
 ---------------
-1. [W. L. McMillan, Phys. Rev. 138, A442 (1965), Ground State of Liquid
-$$He_4$$](https://journals.aps.org/pr/abstract/10.1103/PhysRev.138.A442)
+1. [Cirac J. I. & Verstraete F., Journal of Physics A: Mathematical and Theoretical (2009), Renormalization and tensor product states in spin chains and lattices](http://iopscience.iop.org/article/10.1088/1751-8113/42/50/504004)
+2. [Sandvik A. W. & Vidal G., Phys. Rev. Lett. 99, 220602 (2007), Variational Quantum Monte Carlo Simulations with Tensor-Network States](https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.99.220602)
+3. [Glasser I. et al, Phys. Rev. X 8, 011006 (2018), Neural-Network Quantum States, String-Bond States, and Chiral Topological States](https://journals.aps.org/prx/abstract/10.1103/PhysRevX.8.011006)
