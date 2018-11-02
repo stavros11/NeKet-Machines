@@ -19,7 +19,7 @@ where $$ A^{(s_i)}_{i} $$ are complex $$ D\times D $$ matrices and $$ s_i $$ are
 | `InitRandom` | Boolean |  Whether to initialize the parameters with random gaussian-distributed values | True |
 | `SigmaRand` | Float |  If InitRandom is chosen, this is the standard deviation of the gaussian  | 0.1 |
 | `BondDim` | Integer |  Bond dimension | None |
-| `Diagonal` | Boolean |  Use diagonal matrices only | False |
+| `Diagonal` | Boolean |  Use diagonal matrices | False |
 | `SymmetryPeriod` | Integer |  The number $$ n $$ of distinct matrices to repeat (for translational symmetry) | $$ N $$ |
 |===
 
