@@ -10,7 +10,7 @@ $$
 \Psi(s_1, \dots , s_N) = \mathrm{Tr}\left [ A^{(s_1)}_1A^{(s_2)}_2\dots A^{(s_N)}_N \right ]
 $$
 
-for arbitrary local quantum numbers $$ s_i $$. $$ A^{(s_i)}_{i} $$ are complex $$ D\times D $$ matrices which contain the $$ N D^2 $$ complex variational parameters. $$ D $$ is known as the bond dimension and is kept the same for all the matrices. It is possible to use diagonal matrices, reducing the number of parameters to $$ N D $$, or to enforce translational symmetry by using the same matrix in all sites. Generally it is possible to repeat $$ n $$ distinct matrices to cover all the sites, where $$ n $$ is a divisor of $$ N $$.
+where $$ A^{(s_i)}_{i} $$ are complex $$ D\times D $$ matrices and $$ s_i $$ are arbitrary local quantum numbers. $$ D $$ is known as the bond dimension and is the same for all the matrices. The total number of parameters is $$ N D^2 $$. It is possible to reduce the number of parameters to $$ N D $$ using diagonal matrices, or to enforce translational symmetry by using the same matrix in all sites. Generally it is possible to repeat $$ n < N $$ distinct matrices to cover all the sites, where $$ n $$ is a divisor of $$ N $$.
 
 |---
 | Parameter | Possible values | Description | Default value |
