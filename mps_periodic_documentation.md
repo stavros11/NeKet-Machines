@@ -20,7 +20,7 @@ for arbitrary local quantum numbers $$ s_i $$. $$ A^{(s_i)}_{i} $$ are complex $
 | `SigmaRand` | Float |  If InitRandom is chosen, this is the standard deviation of the gaussian  | 0.1 |
 | `BondDim` | Integer |  Bond dimension | None |
 | `Diagonal` | Boolean |  Use diagonal matrices only | False |
-| `SymmetryPeriod` | Integer |  The number $$ n $$ of distinct matrices to repeat (assuming translational symmetry) | $$ N $$ |
+| `SymmetryPeriod` | Integer |  The number $$ n $$ of distinct matrices to repeat (for translational symmetry) | $$ N $$ |
 |===
 
 ### Example
