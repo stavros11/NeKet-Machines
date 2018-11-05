@@ -1,6 +1,6 @@
 ---
 title: MPS
-permalink: /docs/mps/
+permalink: /docs/mps_periodic/
 ---
 
 <h2 class="bg-primary">Periodic MPS</h2>
